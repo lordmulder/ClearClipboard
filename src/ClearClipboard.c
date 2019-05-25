@@ -22,13 +22,26 @@
 #include <windows.h>
 #include <shellapi.h>
 
+// Version
+#define VERSION_MAJOR		1
+#define VERSION_MINOR_HI	0
+#define VERSION_MINOR_LO	1
+
+// Options
 #define ENABLE_DEBUG_OUTPOUT 1
 #define DEFAULT_TIMEOUT 30000U
 
+// Const
 #define MUTEX_NAME L"{E19E5CE1-5EF2-4C10-843D-E79460920A4A}"
 #define CLASS_NAME L"{6D6CB8E6-BFEE-40A1-A6B2-2FF34C43F3F8}"
 #define TIMER_UUID 0x5281CC36
 
+// Version string helper
+#define __VERSION_STR__(X,Y,Z) #X"."#Y#Z
+#define _VERSION_STR_(X,Y,Z) __VERSION_STR__(X,Y,Z)
+#define VERSION_STR _VERSION_STR_(VERSION_MAJOR, VERSION_MINOR_HI, VERSION_MINOR_LO)
+
+// Debug output
 #if defined(ENABLE_DEBUG_OUTPOUT) && ENABLE_DEBUG_OUTPOUT
 #define PRINT(TEXT) do \
 { \
@@ -40,28 +53,31 @@ while(0)
 #define PRINT(TEXT) __noop((X))
 #endif
 
+// Helper macro
 #define ERROR_EXIT(X) do \
 { \
 	result = (X); goto clean_up; \
 } \
 while(0)
 
+// Global variables
 static ULONGLONG g_tickCount = 0ULL;
 static UINT g_timeout = DEFAULT_TIMEOUT;
-static CHAR g_text_buffer[2048U];
-
 #ifndef _DEBUG
 static BOOL g_debug = FALSE;
 #else
 static const BOOL g_debug = TRUE;
 #endif
 
+// Forward declaration
 static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 static BOOL clear_clipboard(void);
-static BOOL check_argument(const WCHAR *const command_line, const WCHAR *const arg_name);
+static UINT parse_arguments(const WCHAR *const command_line);
+static BOOL update_autorun_entry(const BOOL remove);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
 
+// Entry point function
 #ifndef _DEBUG
 extern IMAGE_DOS_HEADER __ImageBase;
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow);
@@ -71,9 +87,14 @@ int startup(void)
 }
 #endif //_DEBUG
 
+// ==========================================================================
+// MAIN
+// ==========================================================================
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	int result = 0;
+	UINT mode = 0U;
 	HANDLE mutex = NULL;
 	HWND hwnd = NULL;
 	BOOL have_listener = FALSE, have_timer = FALSE;
@@ -81,17 +102,43 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	WNDCLASSW wc;
 	MSG msg;
 
+	// Initialize variables
 	SecureZeroMemory(&wc, sizeof(WNDCLASSW));
 	SecureZeroMemory(&msg, sizeof(MSG));
 
-#ifndef _DEBUG
-	g_debug = check_argument(lpCmdLine, L"--debug");
-#endif //_DEBUG
+	// Parse CLI arguments
+	mode = parse_arguments(lpCmdLine);
+	PRINT("ClearClipboard v" VERSION_STR);
 
-	if(mutex = CreateMutexW(NULL, TRUE, MUTEX_NAME))
+	// Close running instances, if it was requested
+	if((mode == 1U) || (mode == 2U))
 	{
-		const DWORD error = GetLastError();
-		if(error == ERROR_ALREADY_EXISTS)
+		PRINT("closing all running instances...");
+		while(hwnd = FindWindowExW(HWND_MESSAGE, hwnd, CLASS_NAME, NULL))
+		{
+			PRINT("sending WM_CLOSE");
+			SendMessageW(hwnd, WM_CLOSE, 0U, 0U);
+		}
+		if(mode == 1U)
+		{
+			PRINT("goodbye.");
+			return 0;
+		}
+	}
+
+	// Add or remove autorun entry, if it was requested
+	if((mode == 3U) || (mode == 4U))
+	{
+		update_autorun_entry(mode == 4U);
+		PRINT("goodbye.");
+		return 0;
+	}
+
+	// Lock single instance mutex
+	if(mutex = CreateMutexW(NULL, FALSE, MUTEX_NAME))
+	{
+		const DWORD ret = WaitForSingleObject(mutex, (mode > 1U) ? 5000U : 250U);
+		if((ret != WAIT_OBJECT_0) && (ret != WAIT_ABANDONED))
 		{
 			PRINT("already running, exiting!");
 			ERROR_EXIT(1);
@@ -100,45 +147,50 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
 	PRINT("starting up...");
 
+	// Read configuration from INI
 	if(config_path = get_configuration_path())
 	{
-		const UINT timeout = GetPrivateProfileInt(L"ClearClipboard", L"Timeout", DEFAULT_TIMEOUT, config_path);
-		g_timeout = min(max(1000, timeout), USER_TIMER_MAXIMUM);
+		const UINT value = GetPrivateProfileInt(L"ClearClipboard", L"Timeout", DEFAULT_TIMEOUT, config_path);
+		g_timeout = min(max(1000, value), USER_TIMER_MAXIMUM);
+		LocalFree((HLOCAL)config_path);
 	}
 
+	// Register window class
 	wc.lpfnWndProc   = my_wnd_proc;
 	wc.hInstance     = hInstance;
 	wc.hbrBackground = (HBRUSH)(COLOR_BACKGROUND);
 	wc.lpszClassName = CLASS_NAME;
-
 	if(!RegisterClassW(&wc))
 	{
 		PRINT("failed to register window class!");
 		ERROR_EXIT(2);
 	}
 
-	if(!(hwnd = CreateWindowExW(0L, CLASS_NAME, L"ClearClipboard Window", WS_OVERLAPPEDWINDOW/*|WS_VISIBLE*/, 0, 0, 640, 480, 0, 0, hInstance, NULL)))
+	// Create the message-only window
+	if(!(hwnd = CreateWindowExW(0L, CLASS_NAME, L"ClearClipboard Window", WS_OVERLAPPEDWINDOW/*|WS_VISIBLE*/, 0, 0, 0, 0, HWND_MESSAGE, 0, hInstance, NULL)))
 	{
 		PRINT("failed to create the window!");
 		ERROR_EXIT(3);
 	}
 
+	// Add clipboard listener
 	if(!(have_listener = AddClipboardFormatListener(hwnd)))
 	{
 		PRINT("failed to install clipboard listener!");
 		ERROR_EXIT(4);
 	}
 
+	// Set up window timer
 	g_tickCount = GetTickCount64();
-
-	if(!(have_timer = SetTimer(hwnd, TIMER_UUID, min(max(g_timeout / 25U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
+	if(!(have_timer = SetTimer(hwnd, TIMER_UUID, min(max(g_timeout / 50U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
 	{
 		PRINT("failed to install the window timer!");
 		ERROR_EXIT(5);
 	}
 
-	PRINT("monitoring started.");
+	PRINT("clipboard monitoring started.");
 
+	// Message loop
 	while(GetMessageW(&msg, NULL, 0, 0) > 0)
 	{
 		TranslateMessage(&msg);
@@ -149,16 +201,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
 clean_up:
 	
+	// Kill timer
 	if(hwnd && have_timer)
 	{
 		KillTimer(hwnd, TIMER_UUID);
 	}
 
+	// Remove clipboard listener
 	if(hwnd && have_listener)
 	{
 		RemoveClipboardFormatListener(hwnd);
 	}
 
+	// Close mutex
 	if(mutex)
 	{
 		CloseHandle(mutex);
@@ -167,6 +222,10 @@ clean_up:
 	PRINT("goodbye.");
 	return result;
 }
+
+// ==========================================================================
+// Window Procedure
+// ==========================================================================
 
 static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -198,6 +257,10 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 
 	return 0;
 }
+
+// ==========================================================================
+// Clear Clipboard
+// ==========================================================================
 
 static BOOL clear_clipboard(void)
 {
@@ -236,28 +299,117 @@ static BOOL clear_clipboard(void)
 	return success;
 }
 
-static BOOL check_argument(const WCHAR *const command_line, const WCHAR *const arg_name)
+// ==========================================================================
+// Process CLI arguments
+// ==========================================================================
+
+static UINT parse_arguments(const WCHAR *const command_line)
 {
 	const WCHAR **argv;
-	int argc;
-	BOOL found = FALSE;
+	int i, argc;
+	UINT mode = 0U;
 
 	argv = CommandLineToArgvW(command_line, &argc);
 	if(argv)
 	{
-		while(argc > 1)
+		for(i = 1; i < argc; ++i)
 		{
-			if(!lstrcmpiW(argv[--argc], arg_name))
+			if(!lstrcmpiW(argv[i], L"--close"))
 			{
-				found = TRUE;
+				mode = 1U;
 			}
+			else if(!lstrcmpiW(argv[i], L"--restart"))
+			{
+				mode = 2U;
+			}
+			else if(!lstrcmpiW(argv[i], L"--install"))
+			{
+				mode = 3U;
+			}
+			else if(!lstrcmpiW(argv[i], L"--uninstall"))
+			{
+				mode = 4U;
+			}
+#ifndef _DEBUG
+			else if(!lstrcmpiW(argv[i], L"--debug"))
+			{
+				g_debug = TRUE;
+			}
+#endif //_DEBUG
 		}
 		LocalFree((HLOCAL)argv);
 	}
 
-	return found;
+	return mode;
 }
 
+// ==========================================================================
+// Autorun support
+// ==========================================================================
+
+static BOOL update_autorun_entry(const BOOL remove)
+{
+	static const WCHAR *const REG_VALUE_NAME = L"com.muldersoft.clear_clipboard";
+	HKEY hkey = NULL;
+	BOOL success = FALSE;
+	
+	if(RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0U, NULL, 0U, KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
+	{
+		PRINT("failed to open registry key!");
+		return FALSE;
+	}
+
+	if(!remove)
+	{
+		const WCHAR *const executable_path = get_executable_path();
+		if(executable_path)
+		{
+			PRINT("adding autorun entry to registry...");
+			if(RegSetKeyValueW(hkey, NULL, REG_VALUE_NAME, REG_SZ, executable_path, (lstrlenW(executable_path) + 1U) * sizeof(WCHAR)) == ERROR_SUCCESS)
+			{
+				PRINT("succeeded.");
+				success = TRUE;
+			}
+			else
+			{
+				PRINT("failed to add autorun entry to registry!");
+			}
+			LocalFree((HLOCAL)executable_path);
+		}
+		else
+		{
+			PRINT("failed to determine executable path!");
+		}
+	}
+	else
+	{
+		HRESULT ret;
+		PRINT("removing autorun entry from registry...");
+		if((ret = RegDeleteKeyValueW(hkey, NULL, REG_VALUE_NAME)) == ERROR_SUCCESS)
+		{
+			PRINT("succeeded.");
+			success = TRUE;
+		}
+		else
+		{
+			if(ret != ERROR_FILE_NOT_FOUND)
+			{
+				PRINT("failed to remove autorun entry from registry!");
+			}
+			else
+			{
+				PRINT("autorun entry does not exist.");
+			}
+		}
+	}
+
+	RegCloseKey(hkey);
+	return success;
+}
+
+// ==========================================================================
+// File path routines
+// ==========================================================================
 
 static WCHAR *get_configuration_path(void)
 {
