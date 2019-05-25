@@ -22,10 +22,7 @@
 #include <windows.h>
 #include <shellapi.h>
 
-// Version
-#define VERSION_MAJOR		1
-#define VERSION_MINOR_HI	0
-#define VERSION_MINOR_LO	1
+#include "Version.h"
 
 // Options
 #define ENABLE_DEBUG_OUTPOUT 1
@@ -35,11 +32,6 @@
 #define MUTEX_NAME L"{E19E5CE1-5EF2-4C10-843D-E79460920A4A}"
 #define CLASS_NAME L"{6D6CB8E6-BFEE-40A1-A6B2-2FF34C43F3F8}"
 #define TIMER_UUID 0x5281CC36
-
-// Version string helper
-#define __VERSION_STR__(X,Y,Z) #X"."#Y#Z
-#define _VERSION_STR_(X,Y,Z) __VERSION_STR__(X,Y,Z)
-#define VERSION_STR _VERSION_STR_(VERSION_MAJOR, VERSION_MINOR_HI, VERSION_MINOR_LO)
 
 // Debug output
 #if defined(ENABLE_DEBUG_OUTPOUT) && ENABLE_DEBUG_OUTPOUT

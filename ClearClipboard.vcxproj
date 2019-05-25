@@ -84,7 +84,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ResourceCompile Include="ClearClipboard.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="src\ClearClipboard.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Version.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
