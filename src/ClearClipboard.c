@@ -129,9 +129,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Add or remove autorun entry, if it was requested
 	if((mode == 3U) || (mode == 4U))
 	{
-		update_autorun_entry(mode == 4U);
+		const BOOL success = update_autorun_entry(mode > 3U);
 		PRINT("goodbye.");
-		return 0;
+		return success ? 0 : 1;
 	}
 
 	// Lock single instance mutex
@@ -352,6 +352,7 @@ static BOOL update_autorun_entry(const BOOL remove)
 	static const WCHAR *const REG_VALUE_NAME = L"com.muldersoft.clear_clipboard";
 	HKEY hkey = NULL;
 	BOOL success = FALSE;
+	HRESULT ret;
 	
 	if(RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0U, NULL, 0U, KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
 	{
@@ -383,7 +384,6 @@ static BOOL update_autorun_entry(const BOOL remove)
 	}
 	else
 	{
-		HRESULT ret;
 		PRINT("removing autorun entry from registry...");
 		if((ret = RegDeleteKeyValueW(hkey, NULL, REG_VALUE_NAME)) == ERROR_SUCCESS)
 		{
@@ -399,6 +399,7 @@ static BOOL update_autorun_entry(const BOOL remove)
 			else
 			{
 				PRINT("autorun entry does not exist.");
+				success = TRUE;
 			}
 		}
 	}
