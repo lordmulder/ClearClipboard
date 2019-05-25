@@ -1,7 +1,8 @@
-/bin
-/ipch
-/obj
+*.opensdf
 *.sdf
 *.suo
 *.user
-*.opensdf
+/README.html
+/bin
+/ipch
+/obj
