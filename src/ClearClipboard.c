@@ -81,14 +81,22 @@ static BOOL ctrl_shell_notify_icon(const HWND hwnd, const BOOL remove);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
 
+// ==========================================================================
 // Entry point function
+// ==========================================================================
+
 #ifndef _DEBUG
+
 extern IMAGE_DOS_HEADER __ImageBase;
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow);
+
 int startup(void)
 {
-	return wWinMain((HINSTANCE)&__ImageBase, NULL, GetCommandLineW(), SW_SHOWDEFAULT);
+	const int exit_code =  wWinMain((HINSTANCE)&__ImageBase, NULL, GetCommandLineW(), SW_SHOWDEFAULT);
+	ExitProcess((UINT)exit_code);
+	return exit_code;
 }
+
 #endif //_DEBUG
 
 // ==========================================================================
@@ -113,6 +121,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Parse CLI arguments
 	mode = parse_arguments(lpCmdLine);
 	PRINT("ClearClipboard v" VERSION_STR " [" __DATE__ "]");
+
+	// Check argument
+	if(mode > 4U)
+	{
+		MessageBoxW(NULL, L"Invalid command-line argument(s). Exiting!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONERROR | MB_TOPMOST);
+		return -1;
+	}
 
 	// Close running instances, if it was requested
 	if((mode == 1U) || (mode == 2U))
@@ -325,7 +340,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 					L"ClearClipboard v" WTEXT(VERSION_STR) L" [" WTEXT(__DATE__) L"]\n"
 					L"Copyright(\x24B8) 2019 LoRd_MuldeR <mulder2@gmx.de>\n\n"
 					L"This software is released under the MIT License.\n"
-					L"https://opensource.org/licenses/MIT\n\n"
+					L"(https://opensource.org/licenses/MIT)\n\n"
 					L"For news and updates please check the website at:\n"
 					L"\x2022 http://muldersoft.com/\n"
 					L"\x2022 https://github.com/lordmulder/ClearClipboard\n",
@@ -408,28 +423,45 @@ static UINT parse_arguments(const WCHAR *const command_line)
 	{
 		for(i = 1; i < argc; ++i)
 		{
-			if(!lstrcmpiW(argv[i], L"--close"))
+			const WCHAR *value = argv[i];
+			while((*value) && (*value <= 0x20))
 			{
-				mode = 1U;
+				++value;
 			}
-			else if(!lstrcmpiW(argv[i], L"--restart"))
+			if(*value)
 			{
-				mode = 2U;
-			}
-			else if(!lstrcmpiW(argv[i], L"--install"))
-			{
-				mode = 3U;
-			}
-			else if(!lstrcmpiW(argv[i], L"--uninstall"))
-			{
-				mode = 4U;
-			}
+				if(!lstrcmpiW(value, L"--close"))
+				{
+					mode = 1U;
+				}
+				else if(!lstrcmpiW(value, L"--restart"))
+				{
+					mode = 2U;
+				}
+				else if(!lstrcmpiW(value, L"--install"))
+				{
+					mode = 3U;
+				}
+				else if(!lstrcmpiW(value, L"--uninstall"))
+				{
+					mode = 4U;
+				}
 #ifndef _DEBUG
-			else if(!lstrcmpiW(argv[i], L"--debug"))
-			{
-				g_debug = TRUE;
-			}
+				else if(!lstrcmpiW(value, L"--debug"))
+				{
+					g_debug = TRUE;
+				}
 #endif //_DEBUG
+				else if(!lstrcmpiW(value, L"--slunk"))
+				{
+					ShellExecuteW(NULL, NULL, L"https://youtu.be/n4bply6Ibqw", NULL, NULL, SW_SHOW);
+				}
+				else
+				{
+					mode = MAXUINT;
+					break; /*bad argument*/
+				}
+			}
 		}
 		LocalFree((HLOCAL)argv);
 	}
