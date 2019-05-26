@@ -32,6 +32,10 @@
 #define MUTEX_NAME L"{E19E5CE1-5EF2-4C10-843D-E79460920A4A}"
 #define CLASS_NAME L"{6D6CB8E6-BFEE-40A1-A6B2-2FF34C43F3F8}"
 #define TIMER_UUID 0x5281CC36
+#define NFICO_UUID 0x8EF73CE1
+#define MENU1_UUID 0x1A5C
+#define MENU2_UUID 0x38D6
+#define WM_APP_SNI (WM_APP+101U)
 
 // Debug output
 #if defined(ENABLE_DEBUG_OUTPOUT) && ENABLE_DEBUG_OUTPOUT
@@ -52,9 +56,16 @@ while(0)
 } \
 while(0)
 
+// Wide string wrapper macro
+#define _WTEXT_(X) L##X
+#define WTEXT(X) _WTEXT_(X)
+
 // Global variables
-static ULONGLONG g_tickCount = 0ULL;
+static UINT g_taskbar_created = 0U;
+static HICON g_app_icon = NULL;
+static HMENU g_context_menu = NULL;
 static UINT g_timeout = DEFAULT_TIMEOUT;
+static ULONGLONG g_tickCount = 0U;
 #ifndef _DEBUG
 static BOOL g_debug = FALSE;
 #else
@@ -66,6 +77,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 static BOOL clear_clipboard(void);
 static UINT parse_arguments(const WCHAR *const command_line);
 static BOOL update_autorun_entry(const BOOL remove);
+static BOOL ctrl_shell_notify_icon(const HWND hwnd, const BOOL remove);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
 
@@ -91,22 +103,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	HWND hwnd = NULL;
 	BOOL have_listener = FALSE, have_timer = FALSE;
 	const WCHAR *config_path = NULL;
-	WNDCLASSW wc;
+	WNDCLASSW wcl;
 	MSG msg;
 
 	// Initialize variables
-	SecureZeroMemory(&wc, sizeof(WNDCLASSW));
+	SecureZeroMemory(&wcl, sizeof(WNDCLASSW));
 	SecureZeroMemory(&msg, sizeof(MSG));
 
 	// Parse CLI arguments
 	mode = parse_arguments(lpCmdLine);
-	PRINT("ClearClipboard v" VERSION_STR);
+	PRINT("ClearClipboard v" VERSION_STR " [" __DATE__ "]");
 
 	// Close running instances, if it was requested
 	if((mode == 1U) || (mode == 2U))
 	{
 		PRINT("closing all running instances...");
-		while(hwnd = FindWindowExW(HWND_MESSAGE, hwnd, CLASS_NAME, NULL))
+		while(hwnd = FindWindowExW(NULL, hwnd, CLASS_NAME, NULL))
 		{
 			PRINT("sending WM_CLOSE");
 			SendMessageW(hwnd, WM_CLOSE, 0U, 0U);
@@ -139,6 +151,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
 	PRINT("starting up...");
 
+	// Register "TaskbarCreated" window message
+	if(g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated"))
+	{
+		ChangeWindowMessageFilter(g_taskbar_created, MSGFLT_ADD);
+	}
+
 	// Read configuration from INI
 	if(config_path = get_configuration_path())
 	{
@@ -147,29 +165,52 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		LocalFree((HLOCAL)config_path);
 	}
 
-	// Register window class
-	wc.lpfnWndProc   = my_wnd_proc;
-	wc.hInstance     = hInstance;
-	wc.hbrBackground = (HBRUSH)(COLOR_BACKGROUND);
-	wc.lpszClassName = CLASS_NAME;
-	if(!RegisterClassW(&wc))
+	// Load icon resources
+	if(!(g_app_icon = LoadIconW(hInstance, MAKEINTRESOURCEW(101))))
 	{
-		PRINT("failed to register window class!");
+		PRINT("failed to load icon resource!");
 		ERROR_EXIT(2);
 	}
 
-	// Create the message-only window
-	if(!(hwnd = CreateWindowExW(0L, CLASS_NAME, L"ClearClipboard Window", WS_OVERLAPPEDWINDOW/*|WS_VISIBLE*/, 0, 0, 0, 0, HWND_MESSAGE, 0, hInstance, NULL)))
+	// Create context menu
+	if(g_context_menu = CreatePopupMenu())
 	{
-		PRINT("failed to create the window!");
+		AppendMenuW(g_context_menu, MF_STRING, MENU1_UUID, L"About ClearClipboard v" WTEXT(VERSION_STR));
+		AppendMenuW(g_context_menu, MF_SEPARATOR, 0, NULL);
+		AppendMenuW(g_context_menu, MF_STRING, MENU2_UUID, L"Quit");
+	}
+	else
+	{
+		PRINT("failed to create context menu!");
 		ERROR_EXIT(3);
 	}
+
+	// Register window class
+	wcl.lpfnWndProc   = my_wnd_proc;
+	wcl.hInstance     = hInstance;
+	wcl.hbrBackground = (HBRUSH)(COLOR_BACKGROUND);
+	wcl.lpszClassName = CLASS_NAME;
+	if(!RegisterClassW(&wcl))
+	{
+		PRINT("failed to register window class!");
+		ERROR_EXIT(4);
+	}
+
+	// Create the message-only window
+	if(!(hwnd = CreateWindowExW(0L, CLASS_NAME, L"ClearClipboard window", WS_OVERLAPPEDWINDOW/*|WS_VISIBLE*/, 0, 0, 0, 0, NULL, 0, hInstance, NULL)))
+	{
+		PRINT("failed to create the window!");
+		ERROR_EXIT(5);
+	}
+
+	// Create notification icon
+	ctrl_shell_notify_icon(hwnd, FALSE);
 
 	// Add clipboard listener
 	if(!(have_listener = AddClipboardFormatListener(hwnd)))
 	{
 		PRINT("failed to install clipboard listener!");
-		ERROR_EXIT(4);
+		ERROR_EXIT(6);
 	}
 
 	// Set up window timer
@@ -177,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!(have_timer = SetTimer(hwnd, TIMER_UUID, min(max(g_timeout / 50U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
 	{
 		PRINT("failed to install the window timer!");
-		ERROR_EXIT(5);
+		ERROR_EXIT(7);
 	}
 
 	PRINT("clipboard monitoring started.");
@@ -199,10 +240,28 @@ clean_up:
 		KillTimer(hwnd, TIMER_UUID);
 	}
 
+	// Delete notification icon
+	if(hwnd)
+	{
+		ctrl_shell_notify_icon(hwnd, TRUE);
+	}
+
 	// Remove clipboard listener
 	if(hwnd && have_listener)
 	{
 		RemoveClipboardFormatListener(hwnd);
+	}
+
+	// Free icon resource
+	if(g_context_menu)
+	{
+		DestroyMenu(g_context_menu);
+	}
+
+	// Free icon resource
+	if(g_app_icon)
+	{
+		DestroyIcon(g_app_icon);
 	}
 
 	// Close mutex
@@ -243,8 +302,51 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 			}
 		}
 		break;
+	case WM_APP_SNI:
+		if(LOWORD(lParam) == WM_CONTEXTMENU)
+		{
+			PRINT("WM_APP_SNI --> WM_CONTEXTMENU");
+			if(g_context_menu)
+			{
+				SetForegroundWindow(hWnd);
+				TrackPopupMenu(g_context_menu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, LOWORD(wParam), HIWORD(wParam), 0, hWnd, NULL);
+			}
+			break;
+		}
+		break;
+	case WM_COMMAND:
+		PRINT("WM_COMMAND");
+		if(HIWORD(wParam) == 0)
+		{
+			switch(LOWORD(wParam))
+			{
+			case MENU1_UUID:
+				MessageBoxW(NULL,
+					L"ClearClipboard v" WTEXT(VERSION_STR) L" [" WTEXT(__DATE__) L"]\n"
+					L"Copyright(\x24B8) 2019 LoRd_MuldeR <mulder2@gmx.de>\n\n"
+					L"This software is released under the MIT License.\n"
+					L"https://opensource.org/licenses/MIT\n\n"
+					L"For news and updates please check the website at:\n"
+					L"\x2022 http://muldersoft.com/\n"
+					L"\x2022 https://github.com/lordmulder/ClearClipboard\n",
+					L"About...", MB_ICONINFORMATION | MB_TOPMOST);
+				break;
+			case MENU2_UUID:
+				PostMessageW(hWnd, WM_CLOSE, 0, 0);
+				break;
+			}
+		}
+		break;
 	default:
-		return DefWindowProc(hWnd, message, wParam, lParam);
+		if(message == g_taskbar_created)
+		{
+			PRINT("TaskbarCreated");
+			ctrl_shell_notify_icon(hWnd, FALSE);
+		}
+		else
+		{
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
 	}
 
 	return 0;
@@ -357,15 +459,27 @@ static BOOL update_autorun_entry(const BOOL remove)
 		const WCHAR *const executable_path = get_executable_path();
 		if(executable_path)
 		{
-			PRINT("adding autorun entry to registry...");
-			if(RegSetKeyValueW(hkey, NULL, REG_VALUE_NAME, REG_SZ, executable_path, (lstrlenW(executable_path) + 1U) * sizeof(WCHAR)) == ERROR_SUCCESS)
+			WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, (lstrlenW(executable_path) + 3U) * sizeof(WCHAR));
+			if(buffer)
 			{
-				PRINT("succeeded.");
-				success = TRUE;
+				PRINT("adding autorun entry to registry...");
+				lstrcpyW(buffer, L"\"");
+				lstrcatW(buffer, executable_path);
+				lstrcatW(buffer, L"\"");
+				if(RegSetKeyValueW(hkey, NULL, REG_VALUE_NAME, REG_SZ, buffer, (lstrlenW(buffer) + 1U) * sizeof(WCHAR)) == ERROR_SUCCESS)
+				{
+					PRINT("succeeded.");
+					success = TRUE;
+				}
+				else
+				{
+					PRINT("failed to add autorun entry to registry!");
+				}
+				LocalFree((HLOCAL)buffer);
 			}
 			else
 			{
-				PRINT("failed to add autorun entry to registry!");
+				PRINT("failed to allocate string buffer!");
 			}
 			LocalFree((HLOCAL)executable_path);
 		}
@@ -398,6 +512,44 @@ static BOOL update_autorun_entry(const BOOL remove)
 
 	RegCloseKey(hkey);
 	return success;
+}
+
+// ==========================================================================
+// Shell notification icon
+// ==========================================================================
+
+static BOOL ctrl_shell_notify_icon(const HWND hwnd, const BOOL remove)
+{
+	NOTIFYICONDATAW shell_icon_data;
+	SecureZeroMemory(&shell_icon_data, sizeof(NOTIFYICONDATAW));
+
+	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
+	shell_icon_data.hWnd = hwnd;
+	shell_icon_data.uID = NFICO_UUID;
+
+	if(!remove)
+	{
+		shell_icon_data.hIcon = g_app_icon;
+		lstrcpyW(shell_icon_data.szTip, L"ClearClipboard v" WTEXT(VERSION_STR));
+		shell_icon_data.uCallbackMessage = WM_APP_SNI;
+		shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_ICON | NIF_MESSAGE;
+	}
+	
+	if(Shell_NotifyIconW(remove ? NIM_DELETE : NIM_ADD, &shell_icon_data))
+	{
+		if(!remove)
+		{
+			shell_icon_data.uVersion = NOTIFYICON_VERSION_4;
+			Shell_NotifyIconW(NIM_SETVERSION, &shell_icon_data);
+		}
+	}
+	else
+	{
+		PRINT("failed to create/remove shell notification icon!");
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 // ==========================================================================
