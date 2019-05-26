@@ -7,36 +7,58 @@
 
 *Note:* Clear Clipboard runs "hidden" in the background. Only one instance of Clear Clipboard can be running at a time.
 
+
 # Command-line Options
 
-The following command-line options are available:
+The following *mutually exclusive* commands are supported by the Clear Clipboard program:
 
 * **`--close`**  
-  Close the running instance of Clear Clipboard, if it exists, then exit.
+  Close the running instance of Clear Clipboard, if Clear Clipboard is currently running. Does nothing, otherwise.
 
 * **`--restart`**  
-  Start a new instance of Clear Clipboard; the existing instance will be closed, if it exists.
+  Start a new instance of Clear Clipboard. If Clear Clipboard is already running, the running instance is closed.
 
 * **`--install`**  
-  Add an autorun entry for Clear Clipboard to the registry, so that it will be run automatically at system startup.
+  Add "autorun" entry for Clear Clipboard to the registry, so that Clear Clipboard runs *automatically* at system startup.
 
 * **`--uninstall`**  
-  Remove the autorun entry for Clear Clipboard from the registry, if it exists.
+  Remove the "autorun" entry for Clear Clipboard from the registry, if it currently exists. Does nothing, otherwise.
+
+Additionally, the follwing options can be added:
 
 * **`--debug`**  
   Enable additional debug outputs. Use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug outputs.
 
+* **`--slunk`**  
+  Enable slunk mode for improved user experience.
+
+
 # Configuration File
 
-The configuration file **`ClearClipboard.ini`**, which must be located in the same directory as the executable file, can be used to adjust the behavior of Clear Clipboard. Currently, this file can be used to specify the clear timeout, in milliseconds:
+The configuration file **`ClearClipboard.ini`**, which must be located in the same directory as the executable file, can be used to adjust the behavior of Clear Clipboard. Currently, this file can be used to specify the clear timeout, in milliseconds.
+
+***Example:***
 
 	[ClearClipboard]
 	Timeout=90000
 
+# Version History
+
+## Version 1.02 [2019-05-26]
+
+* Added shell notification icon that can be used to control the Clear Clipboard program.
+
+* Some fixes and improvements.
+
+## Version 1.01 [2019-05-25]
+
+* First public releease.
+
+
 # License
 
 **Copyright(&#9400;) 2019 LoRd_MuldeR &lt;mulder2@gmx.de&gt;, released under the MIT License.**  
-**Check <http://muldersoft.com/> or <http://muldersoft.sourceforge.net/> for updates!**
+**Check <http://muldersoft.com/> or <https://github.com/lordmulder/ClearClipboard> for updates!**
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of this software
 	and associated documentation files (the "Software"), to deal in the Software without
