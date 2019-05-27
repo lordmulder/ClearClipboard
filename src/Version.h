@@ -21,7 +21,7 @@
 // Version
 #define VERSION_MAJOR		1
 #define VERSION_MINOR_HI	0
-#define VERSION_MINOR_LO	2
+#define VERSION_MINOR_LO	3
 
 // Version string helper
 #define ___VERSION_STR___(X) #X
