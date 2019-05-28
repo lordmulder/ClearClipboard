@@ -938,7 +938,7 @@ static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCH
 		return FALSE;
 	}
 
-	if(RegSetValueExW(hkey, name, 0U, REG_SZ, (BYTE*)&text, (lstrlenW(text) + 1U) * sizeof(WCHAR)) != ERROR_SUCCESS)
+	if(RegSetValueExW(hkey, name, 0U, REG_SZ, (BYTE*)text, (lstrlenW(text) + 1U) * sizeof(WCHAR)) != ERROR_SUCCESS)
 	{
 		RegCloseKey(hkey);
 		PRINT("failed to write registry value!");
