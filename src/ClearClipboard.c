@@ -87,6 +87,11 @@ static BOOL about_screen(const BOOL first_run);
 static BOOL show_disclaimer(void);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
+static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
+static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
+static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
+static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
+static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 
 // ==========================================================================
 // Entry point function
@@ -530,15 +535,9 @@ static UINT parse_arguments(const WCHAR *const command_line)
 static BOOL update_autorun_entry(const BOOL remove)
 {
 	static const WCHAR *const REG_VALUE_NAME = L"com.muldersoft.clear_clipboard";
-	HKEY hkey = NULL;
+	static const WCHAR *const REG_VALUE_PATH = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
 	BOOL success = FALSE;
-	HRESULT ret;
-	
-	if(RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0U, NULL, 0U, KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
-	{
-		PRINT("failed to open registry key!");
-		return FALSE;
-	}
 
 	if(!remove)
 	{
@@ -552,7 +551,7 @@ static BOOL update_autorun_entry(const BOOL remove)
 				lstrcpyW(buffer, L"\"");
 				lstrcatW(buffer, executable_path);
 				lstrcatW(buffer, L"\"");
-				if(RegSetKeyValueW(hkey, NULL, REG_VALUE_NAME, REG_SZ, buffer, (lstrlenW(buffer) + 1U) * sizeof(WCHAR)) == ERROR_SUCCESS)
+				if(reg_write_string(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, buffer))
 				{
 					PRINT("succeeded.");
 					success = TRUE;
@@ -577,26 +576,17 @@ static BOOL update_autorun_entry(const BOOL remove)
 	else
 	{
 		PRINT("removing autorun entry from registry...");
-		if((ret = RegDeleteKeyValueW(hkey, NULL, REG_VALUE_NAME)) == ERROR_SUCCESS)
+		if(reg_delete_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME))
 		{
 			PRINT("succeeded.");
 			success = TRUE;
 		}
 		else
 		{
-			if(ret != ERROR_FILE_NOT_FOUND)
-			{
-				PRINT("failed to remove autorun entry from registry!");
-			}
-			else
-			{
-				PRINT("autorun entry does not exist.");
-				success = TRUE;
-			}
+			PRINT("failed to remove autorun entry from registry!");
 		}
 	}
 
-	RegCloseKey(hkey);
 	return success;
 }
 
@@ -691,37 +681,23 @@ static BOOL about_screen(const BOOL first_run)
 
 static BOOL show_disclaimer(void)
 {
-	static const WCHAR *const REG_VALUE_NAME = L"DisclaimerAccepted";
 	static const DWORD REG_VALUE_DATA = (((DWORD)VERSION_MAJOR) << 16) | (((DWORD)VERSION_MINOR_HI) << 8) | ((DWORD)VERSION_MINOR_LO);
-	HKEY hkey = NULL;
-	DWORD type = REG_NONE, size = sizeof(DWORD), value = 0U;
-	BOOL result = FALSE;
+	static const WCHAR *const REG_VALUE_NAME = L"DisclaimerAccepted";
+	static const WCHAR *const REG_VALUE_PATH = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7816D5D9-5D9D-4B3A-B5A8-DD7A7F4C44A3}";
 
-	if(RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7816D5D9-5D9D-4B3A-B5A8-DD7A7F4C44A3}", 0U, NULL, 0U, KEY_READ | KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
+	if(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, 0U) != REG_VALUE_DATA)
 	{
-		PRINT("failed to open registry key!");
-		return TRUE;
-	}
-
-	if(RegQueryValueExW(hkey, REG_VALUE_NAME, NULL, &type, (BYTE*)&value, &size) != ERROR_SUCCESS)
-	{
-		PRINT("failed to read registry value!");
-		type = REG_NONE, value = 0U;
-	}
-
-	if(!(result = (type == REG_DWORD) && (value == REG_VALUE_DATA)))
-	{
-		if(result = about_screen(TRUE))
+		if(about_screen(TRUE))
 		{
-			if(RegSetValueExW(hkey, REG_VALUE_NAME, 0U, REG_DWORD, (const BYTE*)(&REG_VALUE_DATA), sizeof(DWORD)) != ERROR_SUCCESS)
-			{
-				PRINT("failed to write registry value!");
-			}
+			reg_write_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, REG_VALUE_DATA);
+		}
+		else
+		{
+			return FALSE; /*rejected*/
 		}
 	}
 
-	RegCloseKey(hkey);
-	return result;
+	return TRUE;
 }
 
 // ==========================================================================
@@ -807,4 +783,147 @@ static WCHAR *get_executable_path(void)
 
 	LocalFree((HLOCAL)buffer);
 	return NULL;
+}
+
+// ==========================================================================
+// Registry routines
+// ==========================================================================
+
+static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value)
+{
+	HKEY hkey = NULL;
+	DWORD result = 0U, type = REG_NONE, size = sizeof(DWORD);
+
+	if(RegOpenKeyExW(root, path, 0U, KEY_READ, &hkey) != ERROR_SUCCESS)
+	{
+		PRINT("failed to open registry key for reading!");
+		return default_value;
+	}
+
+	if(RegQueryValueExW(hkey, name, NULL, &type, (BYTE*)&result, &size) == ERROR_SUCCESS)
+	{
+		if((type == REG_DWORD) || (type == REG_DWORD_BIG_ENDIAN))
+		{
+			RegCloseKey(hkey);
+			return result;
+		}
+	}
+
+	RegCloseKey(hkey);
+	PRINT("failed to read registry value!");
+	return default_value;
+}
+
+static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name)
+{
+	HKEY hkey = NULL;
+	DWORD capacity;
+
+	if(RegOpenKeyExW(root, path, 0U, KEY_READ, &hkey) != ERROR_SUCCESS)
+	{
+		PRINT("failed to open registry key for reading!");
+		return NULL;
+	}
+
+	for(capacity = 4096U; capacity <= 65536U; capacity *= 2U)
+	{
+		WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, capacity);
+		if(buffer)
+		{
+			DWORD type = REG_NONE, size = capacity;
+			const LSTATUS error = RegQueryValueExW(hkey, name, NULL, &type, (BYTE*)buffer, &size);
+			if((error == ERROR_SUCCESS) && ((type == REG_SZ) || (type == REG_EXPAND_SZ)))
+			{
+				RegCloseKey(hkey);
+				return buffer;
+			}
+			LocalFree((HLOCAL)buffer);
+			if(error != ERROR_MORE_DATA)
+			{
+				break; /*failure*/
+			}
+		}
+		else
+		{
+			RegCloseKey(hkey);
+			PRINT("failed to allocate buffer!");
+			return NULL;
+		}
+	}
+
+	RegCloseKey(hkey);
+	PRINT("failed to read registry value!");
+	return NULL;
+}
+
+static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value)
+{
+	HKEY hkey = NULL;
+
+	if(RegCreateKeyExW(root, path, 0U, NULL, 0U, KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
+	{
+		PRINT("failed to open registry key for writing!");
+		return FALSE;
+	}
+
+	if(RegSetValueExW(hkey, name, 0U, REG_DWORD, (BYTE*)&value, sizeof(DWORD)) != ERROR_SUCCESS)
+	{
+		RegCloseKey(hkey);
+		PRINT("failed to write registry value!");
+		return FALSE;
+	}
+
+	RegCloseKey(hkey);
+	return TRUE;
+}
+
+static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text)
+{
+	HKEY hkey = NULL;
+
+	if(RegCreateKeyExW(root, path, 0U, NULL, 0U, KEY_WRITE, NULL, &hkey, NULL) != ERROR_SUCCESS)
+	{
+		RegCloseKey(hkey);
+		PRINT("failed to open registry key for writing!");
+		return FALSE;
+	}
+
+	if(RegSetValueExW(hkey, name, 0U, REG_SZ, (BYTE*)&text, (lstrlenW(text) + 1U) * sizeof(WCHAR)) != ERROR_SUCCESS)
+	{
+		RegCloseKey(hkey);
+		PRINT("failed to write registry value!");
+		return FALSE;
+	}
+
+	RegCloseKey(hkey);
+	return TRUE;
+}
+
+static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name)
+{
+	HKEY hkey = NULL;
+	LSTATUS error = 0U;
+
+	if((error = RegOpenKeyExW(root, path, 0U, KEY_WRITE, &hkey)) != ERROR_SUCCESS)
+	{
+		if(error != ERROR_FILE_NOT_FOUND)
+		{
+			PRINT("failed to open registry key for writing!");
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	if((error = RegDeleteValueW(hkey, name)) != ERROR_SUCCESS)
+	{
+		if(error != ERROR_FILE_NOT_FOUND)
+		{
+			RegCloseKey(hkey);
+			PRINT("failed to write registry value!");
+			return FALSE;
+		}
+	}
+
+	RegCloseKey(hkey);
+	return TRUE;
 }
