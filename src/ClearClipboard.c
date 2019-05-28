@@ -61,10 +61,19 @@ while(0)
 } \
 while(0)
 
-// Helper macro
+// Exit program
 #define ERROR_EXIT(X) do \
 { \
-	result = (X); goto clean_up; \
+	result = (X); \
+	goto clean_up; \
+} \
+while(0)
+
+// Free buffer
+#define FREE(X) do \
+{ \
+	LocalFree((HLOCAL)(X)); \
+	(X) = NULL; \
 } \
 while(0)
 
@@ -104,6 +113,7 @@ static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WC
 static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
 static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
+static WCHAR *quote_string(const WCHAR *const text);
 
 // ==========================================================================
 // Entry point function
@@ -208,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	{
 		g_timeout = get_config_value(config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
 		g_sound_enabled = get_config_value(config_path, L"SoundEnabled", DEFAULT_SOUND_LEVEL, 0U, 2U);
-		LocalFree((HLOCAL)config_path);
+		FREE(config_path);
 	}
 
 	// Load icon resources
@@ -535,7 +545,7 @@ static UINT parse_arguments(const WCHAR *const command_line)
 				}
 			}
 		}
-		LocalFree((HLOCAL)argv);
+		FREE(argv);
 	}
 
 	return mode;
@@ -554,17 +564,14 @@ static BOOL update_autorun_entry(const BOOL remove)
 
 	if(!remove)
 	{
-		const WCHAR *const executable_path = get_executable_path();
+		const WCHAR *executable_path = get_executable_path();
 		if(executable_path)
 		{
-			WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, (lstrlenW(executable_path) + 3U) * sizeof(WCHAR));
-			if(buffer)
+			const WCHAR *command_str = quote_string(executable_path);
+			if(command_str)
 			{
 				PRINT("adding autorun entry to registry...");
-				lstrcpyW(buffer, L"\"");
-				lstrcatW(buffer, executable_path);
-				lstrcatW(buffer, L"\"");
-				if(reg_write_string(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, buffer))
+				if(reg_write_string(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, command_str))
 				{
 					PRINT("succeeded.");
 					success = TRUE;
@@ -573,13 +580,13 @@ static BOOL update_autorun_entry(const BOOL remove)
 				{
 					PRINT("failed to add autorun entry to registry!");
 				}
-				LocalFree((HLOCAL)buffer);
+				FREE(command_str);
 			}
 			else
 			{
 				PRINT("failed to allocate string buffer!");
 			}
-			LocalFree((HLOCAL)executable_path);
+			FREE(executable_path);
 		}
 		else
 		{
@@ -721,14 +728,14 @@ static BOOL play_sound_effect(void)
 {
 	BOOL success = FALSE;
 
-	const WCHAR *const sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L"");
+	const WCHAR *sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L"");
 	if(sound_file)
 	{
 		if(sound_file[0] && (GetFileAttributesW(sound_file) != INVALID_FILE_ATTRIBUTES))
 		{
 			success = PlaySoundW(sound_file, NULL, SND_ASYNC);
 		}
-		LocalFree((HLOCAL)sound_file);
+		FREE(sound_file);
 	}
 
 	if(!success)
@@ -852,22 +859,56 @@ static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHA
 
 	if(RegQueryValueExW(hkey, name, NULL, &type, (BYTE*)&result, &size) == ERROR_SUCCESS)
 	{
-		if((type == REG_DWORD) || (type == REG_DWORD_BIG_ENDIAN))
+		if((type != REG_DWORD) && (type != REG_DWORD_BIG_ENDIAN))
 		{
-			RegCloseKey(hkey);
-			return result;
+			PRINT("registry value has an unexpected type!");
+			result = default_value;
 		}
+	}
+	else
+	{
+		PRINT("failed to read registry value!");
+		result = default_value;
 	}
 
 	RegCloseKey(hkey);
-	PRINT("failed to read registry value!");
-	return default_value;
+	return result;
+}
+
+static BYTE *reg_read_data(const HKEY hkey, const WCHAR *const name, DWORD *const type)
+{
+	DWORD i, size;
+	BYTE *buffer = NULL;
+	*type = REG_NONE;
+
+	for(i = 0U; i <= 10U; ++i)
+	{
+		if(buffer = (BYTE*) LocalAlloc(LPTR, size = (1U << (10U + i))))
+		{
+			const LSTATUS error = RegQueryValueExW(hkey, name, NULL, type, buffer, &size);
+			if(error != ERROR_SUCCESS)
+			{
+				FREE(buffer);
+			}
+			if(error != ERROR_MORE_DATA)
+			{
+				break; /*done*/
+			}
+		}
+		else
+		{
+			break; /*failed*/
+		}
+	}
+
+	return buffer;
 }
 
 static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name)
 {
 	HKEY hkey = NULL;
-	DWORD capacity;
+	WCHAR *buffer = NULL;
+	DWORD type;
 
 	if(RegOpenKeyExW(root, path, 0U, KEY_READ, &hkey) != ERROR_SUCCESS)
 	{
@@ -875,35 +916,22 @@ static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WC
 		return NULL;
 	}
 
-	for(capacity = 4096U; capacity <= 65536U; capacity *= 2U)
+	if(buffer = (WCHAR*) reg_read_data(hkey, name, &type))
 	{
-		WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, capacity);
-		if(buffer)
+		if((type != REG_SZ) && (type != REG_EXPAND_SZ))
 		{
-			DWORD type = REG_NONE, size = capacity;
-			const LSTATUS error = RegQueryValueExW(hkey, name, NULL, &type, (BYTE*)buffer, &size);
-			if((error == ERROR_SUCCESS) && ((type == REG_SZ) || (type == REG_EXPAND_SZ)))
-			{
-				RegCloseKey(hkey);
-				return buffer;
-			}
-			LocalFree((HLOCAL)buffer);
-			if(error != ERROR_MORE_DATA)
-			{
-				break; /*failure*/
-			}
+			
+			PRINT("registry string has an unexpected type!");
+			FREE(buffer);
 		}
-		else
-		{
-			RegCloseKey(hkey);
-			PRINT("failed to allocate buffer!");
-			return NULL;
-		}
+	}
+	else
+	{
+		PRINT("failed to read registry string!");
 	}
 
 	RegCloseKey(hkey);
-	PRINT("failed to read registry value!");
-	return NULL;
+	return buffer;
 }
 
 static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value)
@@ -952,7 +980,7 @@ static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCH
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name)
 {
 	HKEY hkey = NULL;
-	LSTATUS error = 0U;
+	LSTATUS error;
 
 	if((error = RegOpenKeyExW(root, path, 0U, KEY_WRITE, &hkey)) != ERROR_SUCCESS)
 	{
@@ -976,4 +1004,23 @@ static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCH
 
 	RegCloseKey(hkey);
 	return TRUE;
+}
+
+// ==========================================================================
+// String helper routines
+// ==========================================================================
+
+static WCHAR *quote_string(const WCHAR *const text)
+{
+	WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, (lstrlenW(text) + 3U) * sizeof(WCHAR));
+	if(buffer)
+	{
+		lstrcpyW(buffer, L"\"");
+		lstrcatW(buffer, text);
+		lstrcatW(buffer, L"\"");
+		return buffer;
+	}
+	
+	PRINT("failed to allocate string buffer!");
+	return NULL;
 }
