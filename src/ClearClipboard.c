@@ -28,6 +28,7 @@
 // Options
 #define ENABLE_DEBUG_OUTPOUT 1
 #define DEFAULT_TIMEOUT 30000U
+#define DEFAULT_SOUND_LEVEL 1U
 
 // Const
 #define MUTEX_NAME L"{E19E5CE1-5EF2-4C10-843D-E79460920A4A}"
@@ -52,6 +53,14 @@ while(0)
 #define PRINT(TEXT) __noop((X))
 #endif
 
+// Play sound
+#define PLAY_SOUND(X) do \
+{ \
+	if(g_sound_enabled >= (X)) \
+		play_sound_effect(); \
+} \
+while(0)
+
 // Helper macro
 #define ERROR_EXIT(X) do \
 { \
@@ -68,6 +77,7 @@ static UINT g_taskbar_created = 0U;
 static HICON g_app_icon = NULL;
 static HMENU g_context_menu = NULL;
 static UINT g_timeout = DEFAULT_TIMEOUT;
+static UINT g_sound_enabled = DEFAULT_SOUND_LEVEL;
 static BOOL g_suspended = FALSE;
 static ULONGLONG g_tickCount = 0U;
 #ifndef _DEBUG
@@ -85,8 +95,10 @@ static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL remove);
 static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended);
 static BOOL about_screen(const BOOL first_run);
 static BOOL show_disclaimer(void);
+static BOOL play_sound_effect(void);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
+static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, const UINT default_value, const UINT min_value, const UINT max_value);
 static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
 static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
@@ -191,11 +203,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		ChangeWindowMessageFilter(g_taskbar_created, MSGFLT_ADD);
 	}
 
-	// Read configuration from INI
+	// Read config from INI file
 	if(config_path = get_configuration_path())
 	{
-		const UINT value = GetPrivateProfileIntW(L"ClearClipboard", L"Timeout", DEFAULT_TIMEOUT, config_path);
-		g_timeout = min(max(1000, value), USER_TIMER_MAXIMUM);
+		g_timeout = get_config_value(config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
+		g_sound_enabled = get_config_value(config_path, L"SoundEnabled", DEFAULT_SOUND_LEVEL, 0U, 2U);
 		LocalFree((HLOCAL)config_path);
 	}
 
@@ -344,6 +356,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 					if(clear_clipboard())
 					{
 						g_tickCount = tickCount;
+						PLAY_SOUND(2U);
 					}
 				}
 				else
@@ -369,8 +382,8 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 			PRINT("WM_LBUTTONDBLCLK");
 			if(clear_clipboard())
 			{
-				PlaySoundW(L"SystemAsterisk", NULL, SND_ALIAS | SND_ASYNC);
 				g_tickCount = GetTickCount64();
+				PLAY_SOUND(1U);
 			}
 			break;
 		}
@@ -389,8 +402,8 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 				PRINT("menu item #2 triggered");
 				if(clear_clipboard())
 				{
-					PlaySoundW(L"SystemAsterisk", NULL, SND_ALIAS | SND_ASYNC);
 					g_tickCount = GetTickCount64();
+					PLAY_SOUND(1U);
 				}
 				break;
 			case MENU3_ID:
@@ -701,6 +714,32 @@ static BOOL show_disclaimer(void)
 }
 
 // ==========================================================================
+// Play sound effect
+// ==========================================================================
+
+static BOOL play_sound_effect(void)
+{
+	BOOL success = FALSE;
+
+	const WCHAR *const sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L"");
+	if(sound_file)
+	{
+		if(sound_file[0] && (GetFileAttributesW(sound_file) != INVALID_FILE_ATTRIBUTES))
+		{
+			success = PlaySoundW(sound_file, NULL, SND_ASYNC);
+		}
+		LocalFree((HLOCAL)sound_file);
+	}
+
+	if(!success)
+	{
+		success = PlaySoundW(L"SystemAsterisk", NULL, SND_ALIAS | SND_ASYNC);
+	}
+
+	return success;
+}
+
+// ==========================================================================
 // File path routines
 // ==========================================================================
 
@@ -783,6 +822,17 @@ static WCHAR *get_executable_path(void)
 
 	LocalFree((HLOCAL)buffer);
 	return NULL;
+}
+
+// ==========================================================================
+// Configuration routines
+// ==========================================================================
+
+static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, const UINT default_value, const UINT min_value, const UINT max_value)
+{
+	static const WCHAR *const SECTION_NAME = L"ClearClipboard";
+	const UINT value = GetPrivateProfileIntW(SECTION_NAME, name , default_value, path);
+	return max(min_value, min(max_value, value));
 }
 
 // ==========================================================================
