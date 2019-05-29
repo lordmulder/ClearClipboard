@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------------------------- */
-/* Clear Clipboard                                                                                */
+/* ClearClipboard                                                                                */
 /* Copyright(c) 2019 LoRd_MuldeR <mulder2@gmx.de>                                                 */
 /*                                                                                                */
 /* Permission is hereby granted, free of charge, to any person obtaining a copy of this software  */
@@ -249,7 +249,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		AppendMenuW(g_context_menu, MF_STRING, MENU1_ID, L"ClearClipboard v" WTEXT(VERSION_STR));
 		AppendMenuW(g_context_menu, MF_SEPARATOR, 0, NULL);
 		AppendMenuW(g_context_menu, MF_STRING, MENU2_ID, L"Clear now!");
-		AppendMenuW(g_context_menu, MF_STRING, MENU3_ID, L"Suspend auto-clearing");
+		AppendMenuW(g_context_menu, MF_STRING, MENU3_ID, L"Halt automatic clearing");
 		AppendMenuW(g_context_menu, MF_SEPARATOR, 0, NULL);
 		AppendMenuW(g_context_menu, MF_STRING, MENU4_ID, L"Quit");
 		SetMenuDefaultItem(g_context_menu, MENU1_ID, FALSE);

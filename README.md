@@ -1,58 +1,85 @@
-% Clear Clipboard
-% Periodically clear clipboard, e.g. to hide sensitive infomration  
+% ClearClipboard
+% Periodically ClearClipboard, e.g. to hide sensitive information  
 
 # Introduction
 
-**Clear Clipboard** is a simple tool that will *periodically clear* your clipboard. This is useful, for example, to hide sensitive information, such as passwords. The clear timeout can be configured freely and defaults to 30 seconds. Also, the clipboard will *not* simply be cleard at a fixed interval. Instead, the clear timer will be *reset* everytime that new contentent is copied to the clipboard. This ensures that only "stale" content will be cleared; recently copied content will *never* be cleared away.
+**ClearClipboard** is a simple tool that will *periodically clear* your clipboard. This is useful, for example, to hide sensitive information, such as passwords. The clear timeout can be configured freely and defaults to 30 seconds. Also, the clipboard will *not* simply be cleared at a fixed interval. Instead, the clear timer will be *reset* every time that new content is copied to the clipboard. This ensures that only "stale" content will be cleared; recently copied content will *never* be cleared away.
 
-*Note:* Clear Clipboard runs "hidden" in the background. Only one instance of Clear Clipboard can be running at a time.
+*Note:* The ClearClipboard program runs "hidden" in the background. However, there will be an icon in the [notification area](https://docs.microsoft.com/en-us/windows/desktop/uxguide/winenv-notification), which can be used to control or terminate ClearClipboard. Only one instance of ClearClipboard can be running at a time.
 
 
 # Command-line Options
 
-The following *mutually exclusive* commands are supported by the Clear Clipboard program:
+The ClearClipboard program supports the following *mutually exclusive* command-line options:
 
 * **`--close`**  
-  Close the running instance of Clear Clipboard, if Clear Clipboard is currently running. Does nothing, otherwise.
+  Close the running instance of ClearClipboard, if ClearClipboard is currently running. Does nothing, otherwise.
 
 * **`--restart`**  
-  Start a new instance of Clear Clipboard. If Clear Clipboard is already running, the running instance is closed.
+  Start a new instance of ClearClipboard. If ClearClipboard is already running, the running instance is closed.
 
 * **`--install`**  
-  Add "autorun" entry for Clear Clipboard to the registry, so that Clear Clipboard runs *automatically* at system startup.
+  Add "autorun" entry for ClearClipboard to the registry, so that ClearClipboard runs *automatically* at system startup.
 
 * **`--uninstall`**  
-  Remove the "autorun" entry for Clear Clipboard from the registry, if it currently exists. Does nothing, otherwise.
+  Remove the "autorun" entry for ClearClipboard from the registry, if it currently exists. Does nothing, otherwise.
 
-Additionally, the follwing options can be added:
+Furthermore, the following options may be added to the command-line:
 
 * **`--debug`**  
-  Enable additional debug outputs. Use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug outputs.
+  Enable debug outputs (verbose mode). You can use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug outputs.
 
 * **`--slunk`**  
-  Enable slunk mode for improved user experience.
+  Enable slunk mode for improved user experience. Check it out!
 
 
 # Configuration File
 
-The configuration file **`ClearClipboard.ini`**, which must be located in the same directory as the executable file, can be used to adjust the behavior of Clear Clipboard. Currently, this file can be used to specify the clear timeout, in milliseconds.
+The behavior of the ClearClipboard program can be adjusted via a configuration file, in the [INI format](https://en.wikipedia.org/wiki/INI_file).
 
-***Example:***
+The configuration file must be located in the same directory as the ClearClipboard executable. Also, it must have the same file name as the ClearClipboard executable, except that the file extension is replaced by **`.ini`**. The default configuration file name therefore is **`ClearClipboard.ini`**. All parameters need to be located in the **`[ClearClipboard]`** section.
+
+The following configuration parameters are supported:
+
+* **`Timeout=<msec>`**  
+  Specifies the timeout for automatic clipboard clearing, in milliseconds. Default: `30000`.
+
+* **`Sound=<0|1|2>`**  
+  Controls sound effects. Mode `1` plays a sound, when the clipboard is cleared manually. Mode `2` additionally plays a sound every time that the clipboard is cleared automatically. And mode `0` disables all sounds. Default: `1`.
+
+* **`Halted=<0|1>`**  
+  If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
+
+## Example Configuration
+
+An example configuration file:
 
 	[ClearClipboard]
-	Timeout=90000
+	Timeout=30000
+	Sound=1
+	Halted=0
 
 # Version History
 
+## Version 1.03 [2019-05-30]
+
+* Clipboard can be cleared manually by double-click on the shell notification icon or from the context menu.
+
+* Optionally, a sound can be played whenever the clipboard is cleared.
+
+* Automatic clipboard clearing can now be halted (suspended) or resumed at any time via the context menu.
+
+* The additional configuration parameters `Sound` and `Halted` are supported now.
+
 ## Version 1.02 [2019-05-26]
 
-* Added shell notification icon that can be used to control the Clear Clipboard program.
+* Added shell notification icon that can be used to control the ClearClipboard program.
 
 * Some fixes and improvements.
 
 ## Version 1.01 [2019-05-25]
 
-* First public releease.
+* First public release.
 
 
 # License
