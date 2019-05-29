@@ -83,11 +83,12 @@ while(0)
 
 // Global variables
 static UINT g_taskbar_created = 0U;
-static HICON g_app_icon = NULL;
+static HICON g_app_icon[2U] = { NULL, NULL };
 static HMENU g_context_menu = NULL;
 static UINT g_timeout = DEFAULT_TIMEOUT;
 static UINT g_sound_enabled = DEFAULT_SOUND_LEVEL;
-static BOOL g_suspended = FALSE;
+static BOOL g_halted = FALSE;
+static const WCHAR *g_sound_file = NULL;
 static ULONGLONG g_tickCount = 0U;
 #ifndef _DEBUG
 static BOOL g_debug = FALSE;
@@ -100,8 +101,9 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 static BOOL clear_clipboard(void);
 static UINT parse_arguments(const WCHAR *const command_line);
 static BOOL update_autorun_entry(const BOOL remove);
-static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL remove);
+static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended);
 static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended);
+static BOOL delete_shell_notify_icon(const HWND hwnd);
 static BOOL about_screen(const BOOL first_run);
 static BOOL show_disclaimer(void);
 static BOOL play_sound_effect(void);
@@ -217,15 +219,28 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(config_path = get_configuration_path())
 	{
 		g_timeout = get_config_value(config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
-		g_sound_enabled = get_config_value(config_path, L"SoundEnabled", DEFAULT_SOUND_LEVEL, 0U, 2U);
+		g_sound_enabled = get_config_value(config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0U, 2U);
+		g_halted = !!get_config_value(config_path, L"Halted", FALSE, FALSE, TRUE);
 		FREE(config_path);
 	}
 
 	// Load icon resources
-	if(!(g_app_icon = LoadIconW(hInstance, MAKEINTRESOURCEW(101))))
+	g_app_icon[0U] = LoadIconW(hInstance, MAKEINTRESOURCEW(101));
+	g_app_icon[1U] = LoadIconW(hInstance, MAKEINTRESOURCEW(102));
+	if(!(g_app_icon[0U] && g_app_icon[1U]))
 	{
 		PRINT("failed to load icon resource!");
 		ERROR_EXIT(3);
+	}
+
+	// Detect sound file path
+	if(g_sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L""))
+	{
+		if((!g_sound_file[0]) || (GetFileAttributesW(g_sound_file) == INVALID_FILE_ATTRIBUTES))
+		{
+			PRINT("sound file does not exist!");
+			FREE(g_sound_file);
+		}
 	}
 
 	// Create context menu
@@ -264,8 +279,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	}
 
 	// Create notification icon
-	create_shell_notify_icon(hwnd, FALSE);
-	update_shell_notify_icon(hwnd, FALSE);
+	create_shell_notify_icon(hwnd, g_halted);
 
 	// Add clipboard listener
 	if(!(have_listener = AddClipboardFormatListener(hwnd)))
@@ -309,7 +323,7 @@ clean_up:
 	// Delete notification icon
 	if(hwnd)
 	{
-		create_shell_notify_icon(hwnd, TRUE);
+		delete_shell_notify_icon(hwnd);
 	}
 
 	// Remove clipboard listener
@@ -324,10 +338,20 @@ clean_up:
 		DestroyMenu(g_context_menu);
 	}
 
-	// Free icon resource
-	if(g_app_icon)
+	// Free icon resources
+	if(g_app_icon[0U])
 	{
-		DestroyIcon(g_app_icon);
+		DestroyIcon(g_app_icon[0U]);
+	}
+	if(g_app_icon[1U])
+	{
+		DestroyIcon(g_app_icon[1U]);
+	}
+
+	// Free sound file path
+	if(g_sound_file)
+	{
+		FREE(g_sound_file);
 	}
 
 	// Close mutex
@@ -361,7 +385,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 			const ULONGLONG tickCount = GetTickCount64();
 			if((tickCount > g_tickCount) && ((tickCount - g_tickCount) > g_timeout))
 			{
-				if(!g_suspended)
+				if(!g_halted)
 				{
 					if(clear_clipboard())
 					{
@@ -418,10 +442,10 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 				break;
 			case MENU3_ID:
 				PRINT("menu item #3 triggered");
-				g_suspended = !g_suspended;
-				CheckMenuItem(g_context_menu, MENU3_ID, g_suspended ? MF_CHECKED : MF_UNCHECKED);
-				update_shell_notify_icon(hWnd, g_suspended);
-				if(!g_suspended)
+				g_halted = !g_halted;
+				CheckMenuItem(g_context_menu, MENU3_ID, g_halted ? MF_CHECKED : MF_UNCHECKED);
+				update_shell_notify_icon(hWnd, g_halted);
+				if(!g_halted)
 				{
 					g_tickCount = GetTickCount64();
 				}
@@ -437,8 +461,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 		if(message == g_taskbar_created)
 		{
 			PRINT("TaskbarCreated");
-			create_shell_notify_icon(hWnd, FALSE);
-			update_shell_notify_icon(hWnd, g_suspended);
+			create_shell_notify_icon(hWnd, g_halted);
 		}
 		else
 		{
@@ -614,7 +637,15 @@ static BOOL update_autorun_entry(const BOOL remove)
 // Shell notification icon
 // ==========================================================================
 
-static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL remove)
+#define INITIALIZE_TIP(X,Y) do \
+{ \
+	lstrcpyW((X), L"ClearClipboard v" WTEXT(VERSION_STR)); \
+	if((Y)) \
+		lstrcatW(shell_icon_data.szTip, L" - halted"); \
+} \
+while(0)
+
+static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 {
 	NOTIFYICONDATAW shell_icon_data;
 	SecureZeroMemory(&shell_icon_data, sizeof(NOTIFYICONDATAW));
@@ -622,25 +653,19 @@ static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL remove)
 	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
-
-	if(!remove)
-	{
-		shell_icon_data.hIcon = g_app_icon;
-		shell_icon_data.uCallbackMessage = WM_NOTIFYICON;
-		shell_icon_data.uFlags = NIF_ICON | NIF_MESSAGE;
-	}
+	shell_icon_data.uCallbackMessage = WM_NOTIFYICON;
+	shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
+	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_ICON | NIF_MESSAGE;
 	
-	if(Shell_NotifyIconW(remove ? NIM_DELETE : NIM_ADD, &shell_icon_data))
+	if(Shell_NotifyIconW(NIM_ADD, &shell_icon_data))
 	{
-		if(!remove)
-		{
-			shell_icon_data.uVersion = NOTIFYICON_VERSION_4;
-			Shell_NotifyIconW(NIM_SETVERSION, &shell_icon_data);
-		}
+		shell_icon_data.uVersion = NOTIFYICON_VERSION_4;
+		Shell_NotifyIconW(NIM_SETVERSION, &shell_icon_data);
 	}
 	else
 	{
-		PRINT("failed to create/remove shell notification icon!");
+		PRINT("failed to create the shell notification icon!");
 		return FALSE;
 	}
 
@@ -655,21 +680,38 @@ static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
-	lstrcpyW(shell_icon_data.szTip, L"ClearClipboard v" WTEXT(VERSION_STR));
-	if(suspended)
-	{
-		lstrcatW(shell_icon_data.szTip, L" - suspended");
-	}
-	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP;
+	shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
+	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_ICON;
 	
 	if(!Shell_NotifyIconW(NIM_MODIFY, &shell_icon_data))
 	{
-		PRINT("failed to modify shell notification icon!");
+		PRINT("failed to modify the shell notification icon!");
 		return FALSE;
 	}
 
 	return TRUE;
 }
+
+static BOOL delete_shell_notify_icon(const HWND hwnd)
+{
+	NOTIFYICONDATAW shell_icon_data;
+	SecureZeroMemory(&shell_icon_data, sizeof(NOTIFYICONDATAW));
+
+	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
+	shell_icon_data.hWnd = hwnd;
+	shell_icon_data.uID = ID_NOTIFYICON;
+	
+	if(!Shell_NotifyIconW(NIM_DELETE, &shell_icon_data))
+	{
+		PRINT("failed to remove the shell notification icon!");
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+#undef INITIALIZE_TIP
 
 // ==========================================================================
 // About dialog
@@ -728,14 +770,9 @@ static BOOL play_sound_effect(void)
 {
 	BOOL success = FALSE;
 
-	const WCHAR *sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L"");
-	if(sound_file)
+	if(g_sound_file)
 	{
-		if(sound_file[0] && (GetFileAttributesW(sound_file) != INVALID_FILE_ATTRIBUTES))
-		{
-			success = PlaySoundW(sound_file, NULL, SND_ASYNC);
-		}
-		FREE(sound_file);
+		success = PlaySoundW(g_sound_file, NULL, SND_ASYNC);
 	}
 
 	if(!success)
@@ -846,6 +883,8 @@ static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, c
 // Registry routines
 // ==========================================================================
 
+unsigned long _byteswap_ulong(unsigned long value);
+
 static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value)
 {
 	HKEY hkey = NULL;
@@ -861,8 +900,12 @@ static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHA
 	{
 		if((type != REG_DWORD) && (type != REG_DWORD_BIG_ENDIAN))
 		{
-			PRINT("registry value has an unexpected type!");
+			PRINT("registry value is not a DWORD!");
 			result = default_value;
+		}
+		else if(type == REG_DWORD_BIG_ENDIAN)
+		{
+			_byteswap_ulong(result); /*cirrect endianess*/
 		}
 	}
 	else
@@ -875,40 +918,11 @@ static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHA
 	return result;
 }
 
-static BYTE *reg_read_data(const HKEY hkey, const WCHAR *const name, DWORD *const type)
-{
-	DWORD i, size;
-	BYTE *buffer = NULL;
-	*type = REG_NONE;
-
-	for(i = 0U; i <= 10U; ++i)
-	{
-		if(buffer = (BYTE*) LocalAlloc(LPTR, size = (1U << (10U + i))))
-		{
-			const LSTATUS error = RegQueryValueExW(hkey, name, NULL, type, buffer, &size);
-			if(error != ERROR_SUCCESS)
-			{
-				FREE(buffer);
-			}
-			if(error != ERROR_MORE_DATA)
-			{
-				break; /*done*/
-			}
-		}
-		else
-		{
-			break; /*failed*/
-		}
-	}
-
-	return buffer;
-}
-
 static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name)
 {
 	HKEY hkey = NULL;
 	WCHAR *buffer = NULL;
-	DWORD type;
+	DWORD buff_size;
 
 	if(RegOpenKeyExW(root, path, 0U, KEY_READ, &hkey) != ERROR_SUCCESS)
 	{
@@ -916,18 +930,37 @@ static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WC
 		return NULL;
 	}
 
-	if(buffer = (WCHAR*) reg_read_data(hkey, name, &type))
+	for(buff_size = 2048U; buff_size <= 1048576U; buff_size <<= 1U)
 	{
-		if((type != REG_SZ) && (type != REG_EXPAND_SZ))
+		if(buffer = (WCHAR*) LocalAlloc(LPTR, buff_size))
 		{
+			DWORD type = REG_NONE, size = buff_size;
+			const LSTATUS error = RegQueryValueExW(hkey, name, NULL, &type, (BYTE*)buffer, &size);
+			if(error == ERROR_SUCCESS)
+			{
+				if((type != REG_SZ) && (type != REG_EXPAND_SZ))
+				{
 			
-			PRINT("registry string has an unexpected type!");
-			FREE(buffer);
+					PRINT("registry value is not a string!");
+					FREE(buffer);
+				}
+				break; /*done*/
+			}
+			else
+			{
+				FREE(buffer);
+				if(error != ERROR_MORE_DATA)
+				{
+					PRINT("failed to read registry string!");
+					break; /*failed*/
+				}
+			}
 		}
-	}
-	else
-	{
-		PRINT("failed to read registry string!");
+		else
+		{
+			PRINT("failed to allocate string buffer!");
+			break; /*failed*/
+		}
 	}
 
 	RegCloseKey(hkey);
@@ -997,7 +1030,7 @@ static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCH
 		if(error != ERROR_FILE_NOT_FOUND)
 		{
 			RegCloseKey(hkey);
-			PRINT("failed to write registry value!");
+			PRINT("failed to delete registry value!");
 			return FALSE;
 		}
 	}
