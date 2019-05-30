@@ -230,7 +230,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!(g_app_icon[0U] && g_app_icon[1U]))
 	{
 		PRINT("failed to load icon resource!");
-		ERROR_EXIT(3);
 	}
 
 	// Detect sound file path
@@ -654,10 +653,14 @@ static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
 	shell_icon_data.uCallbackMessage = WM_NOTIFYICON;
-	shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
 	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
-	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_ICON | NIF_MESSAGE;
-	
+	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_MESSAGE;
+	if(g_app_icon[suspended ? 1U : 0U])
+	{
+		shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+		shell_icon_data.uFlags |= NIF_ICON;
+	}
+
 	if(Shell_NotifyIconW(NIM_ADD, &shell_icon_data))
 	{
 		shell_icon_data.uVersion = NOTIFYICON_VERSION_4;
@@ -680,10 +683,14 @@ static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
-	shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
 	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
-	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_ICON;
-	
+	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP;
+	if(g_app_icon[suspended ? 1U : 0U])
+	{
+		shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+		shell_icon_data.uFlags |= NIF_ICON;
+	}
+
 	if(!Shell_NotifyIconW(NIM_MODIFY, &shell_icon_data))
 	{
 		PRINT("failed to modify the shell notification icon!");
