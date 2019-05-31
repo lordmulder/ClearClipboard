@@ -140,12 +140,17 @@ while(0)
 extern IMAGE_DOS_HEADER __ImageBase;
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow);
 
+#pragma warning(push)
+#pragma warning(disable: 4702)
+
 int startup(void)
 {
 	const int exit_code =  wWinMain((HINSTANCE)&__ImageBase, NULL, GetCommandLineW(), SW_SHOWDEFAULT);
 	ExitProcess((UINT)exit_code);
 	return exit_code;
 }
+
+#pragma warning(pop)
 
 #endif //_DEBUG
 
@@ -162,6 +167,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	BOOL have_listener = FALSE, have_timer = FALSE;
 	WNDCLASSW wcl;
 	MSG msg;
+
+	// Unused params
+	(void)hPrevInstance;
+	(void)nCmdShow;
 
 	// Initialize variables
 	SecureZeroMemory(&wcl, sizeof(WNDCLASSW));
