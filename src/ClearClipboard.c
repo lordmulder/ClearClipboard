@@ -164,7 +164,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	UINT mode = 0U;
 	HANDLE mutex = NULL;
 	HWND hwnd = NULL;
-	BOOL have_listener = FALSE, have_timer = FALSE;
+	BOOL have_listener = FALSE;
+	UINT_PTR timer_id = (UINT_PTR)NULL;
 	WNDCLASSW wcl;
 	MSG msg;
 
@@ -291,7 +292,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Register window class
 	wcl.lpfnWndProc   = my_wnd_proc;
 	wcl.hInstance     = hInstance;
-	wcl.hbrBackground = (HBRUSH)(COLOR_BACKGROUND);
+	wcl.hbrBackground = (HBRUSH) GetStockObject(NULL_BRUSH);
 	wcl.lpszClassName = CLASS_NAME;
 	if(!RegisterClassW(&wcl))
 	{
@@ -318,7 +319,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
 	// Set up window timer
 	g_tickCount = GetTickCount64();
-	if(!(have_timer = SetTimer(hwnd, TIMER_ID, min(max(g_timeout / 50U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
+	if(!(timer_id = SetTimer(hwnd, TIMER_ID, min(max(g_timeout / 50U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
 	{
 		PRINT("failed to install the window timer!");
 		ERROR_EXIT(8);
@@ -343,9 +344,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 clean_up:
 	
 	// Kill timer
-	if(hwnd && have_timer)
+	if(hwnd && timer_id)
 	{
-		KillTimer(hwnd, TIMER_ID);
+		KillTimer(hwnd, timer_id);
 	}
 
 	// Delete notification icon
