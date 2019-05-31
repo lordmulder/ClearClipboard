@@ -2,7 +2,8 @@
 *.sdf
 *.suo
 *.user
-/README.html
+/*.html
 /bin
 /ipch
 /obj
+/out
