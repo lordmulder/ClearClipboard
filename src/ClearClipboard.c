@@ -41,6 +41,52 @@
 #define MENU3_ID 0x46C3
 #define MENU4_ID 0x38D6
 
+// Global variables
+static UINT g_taskbar_created = 0U;
+static HICON g_app_icon[2U] = { NULL, NULL };
+static HMENU g_context_menu = NULL;
+static UINT g_timeout = DEFAULT_TIMEOUT;
+static UINT g_sound_enabled = DEFAULT_SOUND_LEVEL;
+static BOOL g_halted = FALSE;
+static BOOL g_silent = FALSE;
+static const WCHAR *g_sound_file = NULL;
+static const WCHAR *g_config_path = NULL;
+static ULONGLONG g_tickCount = 0U;
+#ifndef _DEBUG
+static BOOL g_debug = FALSE;
+#else
+static const BOOL g_debug = TRUE;
+#endif
+
+// Forward declaration
+static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+static BOOL clear_clipboard(void);
+static UINT parse_arguments(const WCHAR *const command_line);
+static BOOL update_autorun_entry(const BOOL remove);
+static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL halted);
+static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL halted);
+static BOOL delete_shell_notify_icon(const HWND hwnd);
+static BOOL about_screen(const BOOL first_run);
+static BOOL show_disclaimer(void);
+static BOOL play_sound_effect(void);
+static WCHAR *get_configuration_path(void);
+static WCHAR *get_executable_path(void);
+static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, const UINT default_value, const UINT min_value, const UINT max_value);
+static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
+static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
+static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
+static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
+static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
+static WCHAR *quote_string(const WCHAR *const text);
+
+// ==========================================================================
+// Utility macros
+// ==========================================================================
+
+// Wide string wrapper macro
+#define _WTEXT_(X) L##X
+#define WTEXT(X) _WTEXT_(X)
+
 // Debug output
 #if defined(ENABLE_DEBUG_OUTPOUT) && ENABLE_DEBUG_OUTPOUT
 #define PRINT(TEXT) do \
@@ -77,45 +123,13 @@ while(0)
 } \
 while(0)
 
-// Wide string wrapper macro
-#define _WTEXT_(X) L##X
-#define WTEXT(X) _WTEXT_(X)
-
-// Global variables
-static UINT g_taskbar_created = 0U;
-static HICON g_app_icon[2U] = { NULL, NULL };
-static HMENU g_context_menu = NULL;
-static UINT g_timeout = DEFAULT_TIMEOUT;
-static UINT g_sound_enabled = DEFAULT_SOUND_LEVEL;
-static BOOL g_halted = FALSE;
-static const WCHAR *g_sound_file = NULL;
-static ULONGLONG g_tickCount = 0U;
-#ifndef _DEBUG
-static BOOL g_debug = FALSE;
-#else
-static const BOOL g_debug = TRUE;
-#endif
-
-// Forward declaration
-static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-static BOOL clear_clipboard(void);
-static UINT parse_arguments(const WCHAR *const command_line);
-static BOOL update_autorun_entry(const BOOL remove);
-static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended);
-static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended);
-static BOOL delete_shell_notify_icon(const HWND hwnd);
-static BOOL about_screen(const BOOL first_run);
-static BOOL show_disclaimer(void);
-static BOOL play_sound_effect(void);
-static WCHAR *get_configuration_path(void);
-static WCHAR *get_executable_path(void);
-static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, const UINT default_value, const UINT min_value, const UINT max_value);
-static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
-static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
-static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
-static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
-static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
-static WCHAR *quote_string(const WCHAR *const text);
+// Message box
+#define MESSAGE_BOX(X,Y) do \
+{ \
+	if(!g_silent) \
+		MessageBoxW(NULL, (X), L"ClearClipboard v" WTEXT(VERSION_STR), (Y) | MB_TOPMOST); \
+} \
+while(0)
 
 // ==========================================================================
 // Entry point function
@@ -146,7 +160,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	HANDLE mutex = NULL;
 	HWND hwnd = NULL;
 	BOOL have_listener = FALSE, have_timer = FALSE;
-	const WCHAR *config_path = NULL;
 	WNDCLASSW wcl;
 	MSG msg;
 
@@ -161,7 +174,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Check argument
 	if(mode > 4U)
 	{
-		MessageBoxW(NULL, L"Invalid command-line argument(s). Exiting!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONERROR | MB_TOPMOST);
+		MESSAGE_BOX(L"Invalid command-line argument(s). Exiting!", MB_ICONERROR);
 		return -1;
 	}
 
@@ -185,6 +198,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if((mode == 3U) || (mode == 4U))
 	{
 		const BOOL success = update_autorun_entry(mode > 3U);
+		if(success)
+		{
+			MESSAGE_BOX((mode > 3U) ? L"Autorun entry has been removed." : L"Autorun entry has been created.", MB_ICONINFORMATION);
+		}
+		else
+		{
+			MESSAGE_BOX((mode > 3U) ? L"Failed to remove autorun entry!" : L"Failed to create autorun entry!", MB_ICONWARNING);
+		}
 		PRINT("goodbye.");
 		return success ? 0 : 1;
 	}
@@ -200,12 +221,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		}
 	}
 
-	// Show disclaimer message
-	if(!show_disclaimer())
-	{
-		ERROR_EXIT(2);
-	}
-
 	// Print status
 	PRINT("starting up...");
 
@@ -216,12 +231,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	}
 
 	// Read config from INI file
-	if(config_path = get_configuration_path())
+	if(g_config_path = get_configuration_path())
 	{
-		g_timeout = get_config_value(config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
-		g_sound_enabled = get_config_value(config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0U, 2U);
-		g_halted = !!get_config_value(config_path, L"Halted", FALSE, FALSE, TRUE);
-		FREE(config_path);
+		g_timeout = get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
+		g_sound_enabled = get_config_value(g_config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0U, 2U);
+		g_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
+	}
+
+	// Show disclaimer message
+	if(!show_disclaimer())
+	{
+		ERROR_EXIT(2);
 	}
 
 	// Load icon resources
@@ -351,6 +371,12 @@ clean_up:
 	if(g_sound_file)
 	{
 		FREE(g_sound_file);
+	}
+
+	// Free config file path
+	if(g_config_path)
+	{
+		FREE(g_config_path);
 	}
 
 	// Close mutex
@@ -556,6 +582,10 @@ static UINT parse_arguments(const WCHAR *const command_line)
 					g_debug = TRUE;
 				}
 #endif //_DEBUG
+				else if(!lstrcmpiW(value, L"--silent"))
+				{
+					g_silent = TRUE;
+				}
 				else if(!lstrcmpiW(value, L"--slunk"))
 				{
 					ShellExecuteW(NULL, NULL, L"https://youtu.be/n4bply6Ibqw", NULL, NULL, SW_SHOW);
@@ -644,7 +674,7 @@ static BOOL update_autorun_entry(const BOOL remove)
 } \
 while(0)
 
-static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended)
+static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL halted)
 {
 	NOTIFYICONDATAW shell_icon_data;
 	SecureZeroMemory(&shell_icon_data, sizeof(NOTIFYICONDATAW));
@@ -653,11 +683,11 @@ static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
 	shell_icon_data.uCallbackMessage = WM_NOTIFYICON;
-	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
+	INITIALIZE_TIP(shell_icon_data.szTip, halted);
 	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP | NIF_MESSAGE;
-	if(g_app_icon[suspended ? 1U : 0U])
+	if(g_app_icon[halted ? 1U : 0U])
 	{
-		shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+		shell_icon_data.hIcon = g_app_icon[halted ? 1U : 0U];
 		shell_icon_data.uFlags |= NIF_ICON;
 	}
 
@@ -675,7 +705,7 @@ static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	return TRUE;
 }
 
-static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended)
+static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL halted)
 {
 	NOTIFYICONDATAW shell_icon_data;
 	SecureZeroMemory(&shell_icon_data, sizeof(NOTIFYICONDATAW));
@@ -683,11 +713,11 @@ static BOOL update_shell_notify_icon(const HWND hwnd, const BOOL suspended)
 	shell_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
 	shell_icon_data.hWnd = hwnd;
 	shell_icon_data.uID = ID_NOTIFYICON;
-	INITIALIZE_TIP(shell_icon_data.szTip, suspended);
+	INITIALIZE_TIP(shell_icon_data.szTip, halted);
 	shell_icon_data.uFlags = NIF_TIP | NIF_SHOWTIP;
-	if(g_app_icon[suspended ? 1U : 0U])
+	if(g_app_icon[halted ? 1U : 0U])
 	{
-		shell_icon_data.hIcon = g_app_icon[suspended ? 1U : 0U];
+		shell_icon_data.hIcon = g_app_icon[halted ? 1U : 0U];
 		shell_icon_data.uFlags |= NIF_ICON;
 	}
 
@@ -753,6 +783,14 @@ static BOOL show_disclaimer(void)
 	static const DWORD REG_VALUE_DATA = (((DWORD)VERSION_MAJOR) << 16) | (((DWORD)VERSION_MINOR_HI) << 8) | ((DWORD)VERSION_MINOR_LO);
 	static const WCHAR *const REG_VALUE_NAME = L"DisclaimerAccepted";
 	static const WCHAR *const REG_VALUE_PATH = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7816D5D9-5D9D-4B3A-B5A8-DD7A7F4C44A3}";
+
+	if(g_config_path)
+	{
+		if(get_config_value(g_config_path, REG_VALUE_NAME, FALSE, FALSE, TRUE) > 0)
+		{
+			return TRUE;
+		}
+	}
 
 	if(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, 0U) != REG_VALUE_DATA)
 	{

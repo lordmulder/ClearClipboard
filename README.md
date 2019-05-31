@@ -24,10 +24,13 @@ The ClearClipboard program supports the following *mutually exclusive* command-l
 * **`--uninstall`**  
   Remove the "autorun" entry for ClearClipboard from the registry, if it currently exists. Does nothing, otherwise.
 
-Furthermore, the following options may be added to the command-line:
+In addition, one or more of the following options may be appended to the command-line:
+
+* **`--silent`**  
+  Suppress message boxes. Use, e.g., in combination with `--install` or `--uninstall` command.
 
 * **`--debug`**  
-  Enable debug outputs (verbose mode). You can use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug outputs.
+  Enable debug outputs (verbose mode). You can use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug messages.
 
 * **`--slunk`**  
   Enable slunk mode for improved user experience. Check it out!
@@ -70,6 +73,10 @@ An example configuration file:
 * Automatic clipboard clearing can now be halted (suspended) or resumed at any time via the context menu.
 
 * The additional configuration parameters `Sound` and `Halted` are supported now.
+
+* Show message when "autorun" entry has been created or removed. Use option `--silent` to suppress.
+
+* Some fixes and improvements.
 
 ## Version 1.02 [2019-05-26]
 
