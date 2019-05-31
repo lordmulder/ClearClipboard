@@ -18,11 +18,11 @@ Windows XP is **not** supported due to the lack of the `AddClipboardFormatListen
 
 Windows 10 contains some "problematic" features that can put a risk on sensitive information copied to the clipboard:
 
-* The first of those features is called "Clipboard History", which will silently keep a copy of *all* data that has been copied to clipboard at some time. This history will persist even after the clipboard has been cleared!
+* The first of those features is called "Clipboard History", which will silently keep a history (copy) of *all* data that has been copied to clipboard at some time. This history will persist even after the clipboard has been cleared!
 
-* The second feature is called "Automatic Syncing" (Cloud Clipboard), which will automatically upload *all* data that has been copied to clipboard to the Microsoft cloud servers – purportedly to synchronize your devices!
+* The second feature is called "Automatic Syncing" (Cloud Clipboard), which will automatically upload *all* data that is copied to clipboard to the Microsoft cloud servers – purportedly to synchronize the clipboard between your devices!
 
-We ***highly*** recommend to *disable* both of these features in order to allow ClearClipboard to function as expected! You can easily do this in the "Windows Settings" on the "System/Clipboard" page. Please see [here](https://www.tenforums.com/tutorials/110048-enable-disable-clipboard-sync-across-devices-windows-10-a.html) for more information.
+We ***highly*** recommend to *disable* both of these features in order to allow ClearClipboard to function as expected. You can easily do this in the "Windows Settings" on the "System/Clipboard" page. See [here](https://www.tenforums.com/tutorials/109799-turn-off-clipboard-history-windows-10-a.html) and [here](https://www.tenforums.com/tutorials/110048-enable-disable-clipboard-sync-across-devices-windows-10-a.html) for more information!
 
 
 # Command-line Options
@@ -70,7 +70,7 @@ The following configuration parameters are supported:
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
 
-* **`DisableWarningMessages`**
+* **`DisableWarningMessages=<0|1>`**
   If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows 10 features. Default: `0`.
 
 ## Example Configuration
@@ -86,11 +86,21 @@ An example configuration file:
 
 ClearClipboard uses the "Empty Recycle Bin" system sound, as configured in the control panel (`control mmsys.cpl`). If that sound file is *not* found (or *not* configured), ClearClipboard will fall back to the "Asterisk" system sound.
 
+
+# Updates & Source Code
+
+Please check the official web-site at **<http://muldersoft.com/>** or **<http://muldersoft.sourceforge.net/>** for updates!
+
+The source code of ClearClipboard is available from our public Git repository, mirrored at:
+* `git clone https://github.com/lordmulder/ClearClipboard.git` ([Browse](https://github.com/lordmulder/ClearClipboard))
+* `git clone https://muldersoft@bitbucket.org/muldersoft/clearclipboard.git` ([Browse](https://bitbucket.org/muldersoft/clearclipboard/))
+* `git clone https://repo.or.cz/ClearClipboard.git` ([Browse](https://repo.or.cz/ClearClipboard.git))
+
 # Version History
 
 ## Version 1.03 [2019-05-31]
 
-* Clipboard can be cleared manually by double-click on the shell notification icon or from the context menu.
+* Clipboard can be cleared *manually* by double-click on the shell notification icon or from the context menu.
 
 * Optionally, a sound file can be played whenever the clipboard is cleared.
 
@@ -100,7 +110,9 @@ ClearClipboard uses the "Empty Recycle Bin" system sound, as configured in the c
 
 * Show message when "autorun" entry has been created or removed. Use option `--silent` to suppress.
 
-* Detection of "problematic" Windows 10 features (*Clipboard History* and *Cloud Clipboard*)
+* Detection of "problematic" Windows 10 features (*Clipboard History* and *Cloud Clipboard Sync*)
+
+* Added "x64" (64-Bit) binaries of the ClearClipboard program. Note: Requires 64-Bit Windows edition to run.
 
 * Some fixes and improvements.
 
@@ -118,7 +130,6 @@ ClearClipboard uses the "Empty Recycle Bin" system sound, as configured in the c
 # License
 
 **Copyright(&#9400;) 2019 LoRd_MuldeR &lt;mulder2@gmx.de&gt;, released under the MIT License.**  
-**Check <http://muldersoft.com/> or <https://github.com/lordmulder/ClearClipboard> for updates!**
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of this software
 	and associated documentation files (the "Software"), to deal in the Software without
