@@ -40,6 +40,7 @@
 #define MENU2_ID 0x6810
 #define MENU3_ID 0x46C3
 #define MENU4_ID 0x38D6
+#define WIN32_WINNT_WINTHRESHOLD 0x0A00
 
 // Global variables
 static UINT g_taskbar_created = 0U;
@@ -61,6 +62,7 @@ static const BOOL g_debug = TRUE;
 // Forward declaration
 static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 static BOOL clear_clipboard(void);
+static BOOL check_clipboard_settings(void);
 static UINT parse_arguments(const WCHAR *const command_line);
 static BOOL update_autorun_entry(const BOOL remove);
 static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL halted);
@@ -78,6 +80,7 @@ static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHA
 static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 static WCHAR *quote_string(const WCHAR *const text);
+static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor);
 
 // ==========================================================================
 // Utility macros
@@ -131,6 +134,7 @@ while(0)
 } \
 while(0)
 
+
 // ==========================================================================
 // Entry point function
 // ==========================================================================
@@ -164,7 +168,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	UINT mode = 0U;
 	HANDLE mutex = NULL;
 	HWND hwnd = NULL;
-	BOOL have_listener = FALSE;
+	BOOL have_listener = FALSE, ignore_warning = FALSE;
 	UINT_PTR timer_id = (UINT_PTR)NULL;
 	WNDCLASSW wcl;
 	MSG msg;
@@ -246,12 +250,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		g_timeout = get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
 		g_sound_enabled = get_config_value(g_config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0U, 2U);
 		g_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
+		ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
 	}
 
-	// Show disclaimer message
+	// Show the disclaimer message
 	if(!show_disclaimer())
 	{
 		ERROR_EXIT(2);
+	}
+
+	// Check clipboard system configuration
+	if(!(ignore_warning || check_clipboard_settings()))
+	{
+		ERROR_EXIT(4);
 	}
 
 	// Load icon resources
@@ -286,7 +297,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	else
 	{
 		PRINT("failed to create context menu!");
-		ERROR_EXIT(4);
+		ERROR_EXIT(5);
 	}
 
 	// Register window class
@@ -297,14 +308,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!RegisterClassW(&wcl))
 	{
 		PRINT("failed to register window class!");
-		ERROR_EXIT(5);
+		ERROR_EXIT(6);
 	}
 
 	// Create the message-only window
 	if(!(hwnd = CreateWindowExW(0L, CLASS_NAME, L"ClearClipboard window", WS_OVERLAPPEDWINDOW/*|WS_VISIBLE*/, 0, 0, 0, 0, NULL, 0, hInstance, NULL)))
 	{
 		PRINT("failed to create the window!");
-		ERROR_EXIT(6);
+		ERROR_EXIT(7);
 	}
 
 	// Create notification icon
@@ -314,7 +325,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!(have_listener = AddClipboardFormatListener(hwnd)))
 	{
 		PRINT("failed to install clipboard listener!");
-		ERROR_EXIT(7);
+		ERROR_EXIT(8);
 	}
 
 	// Set up window timer
@@ -322,7 +333,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!(timer_id = SetTimer(hwnd, TIMER_ID, min(max(g_timeout / 50U, USER_TIMER_MINIMUM), USER_TIMER_MAXIMUM), NULL)))
 	{
 		PRINT("failed to install the window timer!");
-		ERROR_EXIT(8);
+		ERROR_EXIT(9);
 	}
 
 	PRINT("clipboard monitoring started.");
@@ -333,7 +344,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		if(status == -1)
 		{
 			PRINT("failed to fetch next message!");
-			ERROR_EXIT(9);
+			ERROR_EXIT(10);
 		}
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
@@ -547,6 +558,55 @@ static BOOL clear_clipboard(void)
 
 	return success;
 }
+
+// ==========================================================================
+// Check clipboard configuration
+// ==========================================================================
+
+#define SHOW_WARNING(X) \
+	MessageBoxW(NULL, (X), L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_ABORTRETRYIGNORE | MB_TOPMOST)
+
+static BOOL check_clipboard_settings(void)
+{
+	static const WCHAR *const REG_VALUE_PATH = L"Software\\Microsoft\\Clipboard";
+	static const WCHAR *const REG_VALUE_NAME[2] = { L"EnableClipboardHistory", L"CloudClipboardAutomaticUpload" };
+
+	if(!is_windows_version_or_greater(HIBYTE(WIN32_WINNT_WINTHRESHOLD), LOBYTE(WIN32_WINNT_WINTHRESHOLD), 0))
+	{
+		PRINT("not running on Windows 10 or later.");
+		return TRUE;
+	}
+
+	while(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME[0], 0U) > 0U)
+	{
+		PRINT("warning: windows clipboard history is enabled!");
+		switch(SHOW_WARNING(L"It apperas that the \"Clipboard History\" feature of Windows 10 is enabled on your machine. As long as that feature is enabled, Windows 10 will silently keep a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nIn order to keep your data private, it is *highly* recommended to disable the \"Clipboard History\" in the system settings!"))
+		{
+		case IDABORT:
+			return FALSE;
+		case IDIGNORE:
+			goto exit_loop_1;
+		}
+	}
+
+exit_loop_1:
+	while(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME[1], 0U) > 0U)
+	{
+		PRINT("warning: windows clipboard cloud-sync is enabled!");
+		switch(SHOW_WARNING(L"It apperas that the \"Automatic Syncing\" (Cloud Clipboard) feature of Windows 10 is enabled on your machine. As long as that feature is enabled, Windows 10 will upload *all* data that is copied to the clipboard to the Microsoft cloud.\n\nIn order to keep your data private, it is *highly* recommended to disable the \"Automatic Syncing\" in the system settings!"))
+		{
+		case IDABORT:
+			return FALSE;
+		case IDIGNORE:
+			goto exit_loop_2;
+		}
+	}
+
+exit_loop_2:
+	return TRUE;
+}
+
+#undef SHOW_WARNING
 
 // ==========================================================================
 // Process CLI arguments
@@ -1111,4 +1171,20 @@ static WCHAR *quote_string(const WCHAR *const text)
 	
 	PRINT("failed to allocate string buffer!");
 	return NULL;
+}
+
+// ==========================================================================
+// Windows version helper
+// ==========================================================================
+
+static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor)
+{
+	OSVERSIONINFOEXW osvi;
+	const DWORDLONG dwlConditionMask = VerSetConditionMask(VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL), VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
+	SecureZeroMemory(&osvi, sizeof(OSVERSIONINFOEXW));
+	osvi.dwOSVersionInfoSize = sizeof(osvi);
+	osvi.dwMajorVersion = wMajorVersion;
+	osvi.dwMinorVersion = wMinorVersion;
+	osvi.wServicePackMajor = wServicePackMajor;
+	return VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) != FALSE;
 }

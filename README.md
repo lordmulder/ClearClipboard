@@ -8,6 +8,23 @@
 *Note:* The ClearClipboard program runs "hidden" in the background. However, there will be an icon in the [notification area](https://docs.microsoft.com/en-us/windows/desktop/uxguide/winenv-notification), which can be used to control or terminate ClearClipboard. Only one instance of ClearClipboard can be running at a time.
 
 
+# System requirements
+
+ClearClipboard runs on Windows Vista or newer. The "x64" version requires a 64-Bit version of Windows Vista or newer.
+
+Windows XP is **not** supported due to the lack of the `AddClipboardFormatListener` system function!
+
+## Windows 10 Warning
+
+Windows 10 contains some "problematic" features that can put a risk on sensitive information copied to the clipboard:
+
+* The first of those features is called "Clipboard History", which will silently keep a copy of *all* data that has been copied to clipboard at some time. This history will persist even after the clipboard has been cleared!
+
+* The second feature is called "Automatic Syncing" (Cloud Clipboard), which will automatically upload *all* data that has been copied to clipboard to the Microsoft cloud servers – purportedly to synchronize your devices!
+
+We ***highly*** recommend to *disable* both of these features in order to allow ClearClipboard to function as expected! You can easily do this in the "Windows Settings" on the "System/Clipboard" page. Please see [here](https://www.tenforums.com/tutorials/110048-enable-disable-clipboard-sync-across-devices-windows-10-a.html) for more information.
+
+
 # Command-line Options
 
 The ClearClipboard program supports the following *mutually exclusive* command-line options:
@@ -53,6 +70,9 @@ The following configuration parameters are supported:
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
 
+* **`DisableWarningMessages`**
+  If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows 10 features. Default: `0`.
+
 ## Example Configuration
 
 An example configuration file:
@@ -62,19 +82,25 @@ An example configuration file:
 	Sound=1
 	Halted=0
 
+## Sound File
+
+ClearClipboard uses the "Empty Recycle Bin" system sound, as configured in the control panel (`control mmsys.cpl`). If that sound file is *not* found (or *not* configured), ClearClipboard will fall back to the "Asterisk" system sound.
+
 # Version History
 
-## Version 1.03 [2019-05-30]
+## Version 1.03 [2019-05-31]
 
 * Clipboard can be cleared manually by double-click on the shell notification icon or from the context menu.
 
-* Optionally, a sound can be played whenever the clipboard is cleared.
+* Optionally, a sound file can be played whenever the clipboard is cleared.
 
 * Automatic clipboard clearing can now be halted (suspended) or resumed at any time via the context menu.
 
 * The additional configuration parameters `Sound` and `Halted` are supported now.
 
 * Show message when "autorun" entry has been created or removed. Use option `--silent` to suppress.
+
+* Detection of "problematic" Windows 10 features (*Clipboard History* and *Cloud Clipboard*)
 
 * Some fixes and improvements.
 
