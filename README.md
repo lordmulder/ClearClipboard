@@ -64,6 +64,9 @@ The following configuration parameters are supported:
 * **`Timeout=<msec>`**  
   Specifies the timeout for automatic clipboard clearing, in milliseconds. Default: `30000`.
 
+* **`TextOnly=<0|1>`**  
+  If this parameter is set to `1`, ClearClipboard *only* clears the clipboard automatically, if it contains textual data in one of the standard clipboard formats (`CF_TEXT`, `CF_OEMTEXT`, `CF_UNICODETEXT` or `CF_DSPTEXT`). Otherwise, *any* format will be cleared from the clipboard automatically. Manual clearing is *not* effected by this parameter. Default: `0`.
+
 * **`Sound=<0|1|2>`**  
   Controls sound effects. Mode `1` plays a sound, when the clipboard is cleared manually. Mode `2` additionally plays a sound every time that the clipboard is cleared automatically. And mode `0` disables all sounds. Default: `1`.
 
@@ -79,6 +82,7 @@ An example configuration file:
 
 	[ClearClipboard]
 	Timeout=30000
+	TextOnly=0
 	Sound=1
 	Halted=0
 
@@ -97,6 +101,10 @@ The source code of ClearClipboard is available from our public Git repository, m
 * `git clone https://repo.or.cz/ClearClipboard.git` ([Browse](https://repo.or.cz/ClearClipboard.git))
 
 # Version History
+
+## Version 1.04 [2019-06-01]
+
+* Optionally restrict the automatic clearing to *textual* data. Use parameter `TextOnly` to configure.
 
 ## Version 1.03 [2019-05-31]
 
