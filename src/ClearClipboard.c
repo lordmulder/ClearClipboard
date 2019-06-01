@@ -47,6 +47,7 @@ static UINT g_taskbar_created = 0U;
 static HICON g_app_icon[2U] = { NULL, NULL };
 static HMENU g_context_menu = NULL;
 static UINT g_timeout = DEFAULT_TIMEOUT;
+static BOOL g_textual_only = FALSE;
 static UINT g_sound_enabled = DEFAULT_SOUND_LEVEL;
 static BOOL g_halted = FALSE;
 static BOOL g_silent = FALSE;
@@ -61,7 +62,8 @@ static const BOOL g_debug = TRUE;
 
 // Forward declaration
 static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-static BOOL clear_clipboard(void);
+static UINT clear_clipboard(const BOOL force);
+static BOOL is_textual_format(void);
 static BOOL check_clipboard_settings(void);
 static UINT parse_arguments(const WCHAR *const command_line);
 static BOOL update_autorun_entry(const BOOL remove);
@@ -248,6 +250,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(g_config_path = get_configuration_path())
 	{
 		g_timeout = get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000U, USER_TIMER_MAXIMUM);
+		g_textual_only = !!get_config_value(g_config_path, L"TextOnly", FALSE, FALSE, TRUE);
 		g_sound_enabled = get_config_value(g_config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0U, 2U);
 		g_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
 		ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
@@ -433,17 +436,25 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 			{
 				if(!g_halted)
 				{
-					if(clear_clipboard())
+					const UINT result = clear_clipboard(!g_textual_only);
+					if(result)
 					{
 						g_tickCount = tickCount;
-						PLAY_SOUND(2U);
+						if(result == 1U)
+						{
+							PLAY_SOUND(2U);
+						}
 					}
 				}
 				else
 				{
-					PRINT("skipped.");
+					PRINT("skipped. (clearing is halted)");
 					g_tickCount = tickCount;
 				}
+			}
+			else
+			{
+				PRINT("not ready yet."); /*wait for next WM_TIMER*/
 			}
 		}
 		break;
@@ -460,7 +471,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 			break;
 		case WM_LBUTTONDBLCLK:
 			PRINT("WM_LBUTTONDBLCLK");
-			if(clear_clipboard())
+			if(clear_clipboard(TRUE))
 			{
 				g_tickCount = GetTickCount64();
 				PLAY_SOUND(1U);
@@ -480,7 +491,7 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 				break;
 			case MENU2_ID:
 				PRINT("menu item #2 triggered");
-				if(clear_clipboard())
+				if(clear_clipboard(TRUE))
 				{
 					g_tickCount = GetTickCount64();
 					PLAY_SOUND(1U);
@@ -522,10 +533,10 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 // Clear Clipboard
 // ==========================================================================
 
-static BOOL clear_clipboard(void)
+static UINT clear_clipboard(const BOOL force)
 {
 	int retry;
-	BOOL success = FALSE;
+	UINT success = 0U;
 
 	PRINT("clearing clipboard...");
 
@@ -538,18 +549,35 @@ static BOOL clear_clipboard(void)
 		}
 		if(OpenClipboard(NULL))
 		{
-			success = EmptyClipboard();
+			if(force || is_textual_format())
+			{
+				if(EmptyClipboard())
+				{
+					success = 1U; /*cleared*/
+				}
+			}
+			else
+			{
+				success = 2U; /*skipped*/
+			}
 			CloseClipboard();
 		}
 		if(success)
 		{
-			break; /*successful*/
+			break; /*completed*/
 		}
 	}
 
 	if(success)
 	{
-		PRINT("cleared.");
+		if(success > 1U)
+		{
+			PRINT("skipped. (not textual data)");
+		}
+		else
+		{
+			PRINT("cleared.");
+		}
 	}
 	else
 	{
@@ -557,6 +585,26 @@ static BOOL clear_clipboard(void)
 	}
 
 	return success;
+}
+
+static BOOL is_textual_format(void)
+{
+	UINT format = 0U;
+
+	do
+	{
+		switch(format = EnumClipboardFormats(format))
+		{
+		case CF_TEXT:
+		case CF_OEMTEXT:
+		case CF_UNICODETEXT:
+		case CF_DSPTEXT:
+			return TRUE;
+		}
+	}
+	while(format != 0U);
+
+	return FALSE;
 }
 
 // ==========================================================================
