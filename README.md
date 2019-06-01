@@ -65,10 +65,12 @@ The following configuration parameters are supported:
   Specifies the timeout for automatic clipboard clearing, in milliseconds. Default: `30000`.
 
 * **`TextOnly=<0|1>`**  
-  If this parameter is set to `1`, ClearClipboard *only* clears the clipboard automatically, if it contains textual data in one of the standard clipboard formats (`CF_TEXT`, `CF_OEMTEXT`, `CF_UNICODETEXT` or `CF_DSPTEXT`). Otherwise, *any* format will be cleared from the clipboard automatically. Manual clearing is *not* effected by this parameter. Default: `0`.
+  If this parameter is set to `1`, ClearClipboard *only* clears the clipboard automatically, if it contains textual data. Otherwise, automatically clearing happens regardless of the current data format. Manual clearing is *not* effected. Default: `0`.
+  > Recognized textual formats include the *standard* text formats (`CF_TEXT`, `CF_OEMTEXT`, `CF_UNICODETEXT` and `CF_DSPTEXT`) as well as the most common "registered" formats for textual data. See [here](https://www.codeproject.com/Reference/1091137/Windows-Clipboard-Formats) for details.
 
 * **`Sound=<0|1|2>`**  
   Controls sound effects. Mode `1` plays a sound, when the clipboard is cleared manually. Mode `2` additionally plays a sound every time that the clipboard is cleared automatically. And mode `0` disables all sounds. Default: `1`.
+  > ClearClipboard uses the *"Empty Recycle Bin"* system sound, as set up in the control panel (`control mmsys.cpl`). If that sound file is *not* found or was set to "None", ClearClipboard will fall back to the "Asterisk" default sound.
 
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
@@ -88,7 +90,6 @@ An example configuration file:
 
 ## Sound File
 
-ClearClipboard uses the "Empty Recycle Bin" system sound, as configured in the control panel (`control mmsys.cpl`). If that sound file is *not* found (or *not* configured), ClearClipboard will fall back to the "Asterisk" system sound.
 
 
 # Updates & Source Code

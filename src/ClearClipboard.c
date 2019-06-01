@@ -42,6 +42,23 @@
 #define MENU4_ID 0x38D6
 #define WIN32_WINNT_WINTHRESHOLD 0x0A00
 
+// Common text formats
+const WCHAR *const TEXT_FORMATS[12U] =
+{
+	L"CSV",
+	L"HTML (Hyper Text Markup Language)",
+	L"HTML Format",
+	L"RTF As Text",
+	L"Rich Text Format",
+	L"Rich Text Format Without Objects",
+	L"RichEdit Text and Objects",
+	L"text/csv",
+	L"text/html",
+	L"text/plain",
+	L"text/richtext",
+	L"text/uri-list"
+};
+
 // Global variables
 static UINT g_taskbar_created = 0U;
 static HICON g_app_icon[2U] = { NULL, NULL };
@@ -54,6 +71,7 @@ static BOOL g_silent = FALSE;
 static const WCHAR *g_sound_file = NULL;
 static const WCHAR *g_config_path = NULL;
 static ULONGLONG g_tickCount = 0U;
+static UINT g_text_formats[12U] = { 0U };
 #ifndef _DEBUG
 static BOOL g_debug = FALSE;
 #else
@@ -240,12 +258,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Print status
 	PRINT("starting up...");
 
-	// Register "TaskbarCreated" window message
-	if(g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated"))
-	{
-		ChangeWindowMessageFilter(g_taskbar_created, MSGFLT_ADD);
-	}
-
 	// Read config from INI file
 	if(g_config_path = get_configuration_path())
 	{
@@ -266,6 +278,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(!(ignore_warning || check_clipboard_settings()))
 	{
 		ERROR_EXIT(4);
+	}
+
+	// Register "TaskbarCreated" window message
+	if(g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated"))
+	{
+		ChangeWindowMessageFilter(g_taskbar_created, MSGFLT_ADD);
+	}
+
+	// Register common clipboard formats
+	if(g_textual_only)
+	{
+		size_t i;
+		for(i = 0U; i < 12U; ++i)
+		{
+			g_text_formats[i] = RegisterClipboardFormatW(TEXT_FORMATS[i]);
+		}
 	}
 
 	// Load icon resources
@@ -590,6 +618,7 @@ static UINT clear_clipboard(const BOOL force)
 static BOOL is_textual_format(void)
 {
 	UINT format = 0U;
+	BOOL is_text = FALSE;
 
 	do
 	{
@@ -599,12 +628,26 @@ static BOOL is_textual_format(void)
 		case CF_OEMTEXT:
 		case CF_UNICODETEXT:
 		case CF_DSPTEXT:
-			return TRUE;
+			is_text = TRUE;
+			break;
+		default:
+			if(format >= 0xC000)
+			{
+				size_t i;
+				for(i = 0U; i < 12U; ++i)
+				{
+					if(format == g_text_formats[i])
+					{
+						is_text = TRUE;
+						break;
+					}
+				}
+			}
 		}
 	}
-	while(format != 0U);
+	while((!is_text) && (format != 0U));
 
-	return FALSE;
+	return is_text;
 }
 
 // ==========================================================================
