@@ -88,9 +88,6 @@ An example configuration file:
 	Sound=1
 	Halted=0
 
-## Sound File
-
-
 
 # Updates & Source Code
 
@@ -101,11 +98,14 @@ The source code of ClearClipboard is available from our public Git repository, m
 * `git clone https://muldersoft@bitbucket.org/muldersoft/clearclipboard.git` ([Browse](https://bitbucket.org/muldersoft/clearclipboard/))
 * `git clone https://repo.or.cz/ClearClipboard.git` ([Browse](https://repo.or.cz/ClearClipboard.git))
 
+
 # Version History
 
 ## Version 1.04 [2019-06-01]
 
 * Optionally restrict the automatic clearing to *textual* data. Use parameter `TextOnly` to configure.
+
+* Some fixes and improvements.
 
 ## Version 1.03 [2019-05-31]
 
