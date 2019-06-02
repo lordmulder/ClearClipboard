@@ -93,13 +93,16 @@ static BOOL show_disclaimer(void);
 static BOOL play_sound_effect(void);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
+static WCHAR *get_system_directory(void);
 static UINT get_config_value(const WCHAR *const path, const WCHAR *const name, const UINT default_value, const UINT min_value, const UINT max_value);
 static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
 static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
 static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
+static DWORD get_service_status(const WCHAR *const name);
 static WCHAR *quote_string(const WCHAR *const text);
+static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
 static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor);
 
 // ==========================================================================
@@ -654,50 +657,52 @@ static BOOL is_textual_format(void)
 // Check clipboard configuration
 // ==========================================================================
 
-#define SHOW_WARNING(X) \
-	MessageBoxW(NULL, (X), L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_ABORTRETRYIGNORE | MB_TOPMOST)
-
 static BOOL check_clipboard_settings(void)
 {
-	static const WCHAR *const REG_VALUE_PATH = L"Software\\Microsoft\\Clipboard";
-	static const WCHAR *const REG_VALUE_NAME[2] = { L"EnableClipboardHistory", L"CloudClipboardAutomaticUpload" };
-
 	if(!is_windows_version_or_greater(HIBYTE(WIN32_WINNT_WINTHRESHOLD), LOBYTE(WIN32_WINNT_WINTHRESHOLD), 0))
 	{
 		PRINT("not running on Windows 10 or later.");
 		return TRUE;
 	}
 
-	while(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME[0], 0U) > 0U)
+	if(get_service_status(L"cbdhsvc") > SERVICE_STOPPED)
 	{
-		PRINT("warning: windows clipboard history is enabled!");
-		switch(SHOW_WARNING(L"It apperas that the \"Clipboard History\" feature of Windows 10 is enabled on your machine. As long as that feature is enabled, Windows 10 will silently keep a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nIn order to keep your data private, it is *highly* recommended to disable the \"Clipboard History\" in the system settings!"))
+		PRINT("warning: windows clipboard history service is enabled!");
+		if(MessageBoxW(NULL, L"The \"Clipboard History\" service of Windows 10 is currently running on your machine. As long as that service is running, Windows 10 will silently keep a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nIn order to keep your sensitive data private, it is *highly* recommended to disable the \"Clipboard History\" service! Do you want to disable the \"Clipboard History\" service now?", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_YESNO | MB_TOPMOST) == IDYES)
 		{
-		case IDABORT:
-			return FALSE;
-		case IDIGNORE:
-			goto exit_loop_1;
+			for(;;)
+			{
+				BOOL success = FALSE;
+				WCHAR *sys_path = get_system_directory();
+				if(sys_path)
+				{
+					WCHAR *reg_path = concat_strings(sys_path, L"\\reg.exe");
+					if(reg_path)
+					{
+						if(success = (((int)ShellExecuteW(NULL, L"runas", L"reg.exe", L"ADD HKLM\\SYSTEM\\CurrentControlSet\\Services\\cbdhsvc /f /v Start /t REG_DWORD /d 4", NULL, SW_HIDE)) > 32))
+						{
+							MessageBoxW(NULL, L"Clipboard History service has been disabled. Please reboot your computer for these changes to take effect!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONINFORMATION | MB_TOPMOST);
+						}
+						FREE(reg_path);
+					}
+					FREE(sys_path);
+				}
+				if(!success)
+				{
+					if(MessageBoxW(NULL, L"Failed to disable the service. Retry?", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONERROR | MB_YESNO| MB_TOPMOST) == IDYES)
+					{
+						continue;
+					}
+				}
+				break; /*completed*/
+			}
 		}
+		MessageBoxW(NULL, L"The ClearClipboard program is going to exit for now!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_TOPMOST);
+		return FALSE;
 	}
 
-exit_loop_1:
-	while(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME[1], 0U) > 0U)
-	{
-		PRINT("warning: windows clipboard cloud-sync is enabled!");
-		switch(SHOW_WARNING(L"It apperas that the \"Automatic Syncing\" (Cloud Clipboard) feature of Windows 10 is enabled on your machine. As long as that feature is enabled, Windows 10 will upload *all* data that is copied to the clipboard to the Microsoft cloud.\n\nIn order to keep your data private, it is *highly* recommended to disable the \"Automatic Syncing\" in the system settings!"))
-		{
-		case IDABORT:
-			return FALSE;
-		case IDIGNORE:
-			goto exit_loop_2;
-		}
-	}
-
-exit_loop_2:
 	return TRUE;
 }
-
-#undef SHOW_WARNING
 
 // ==========================================================================
 // Process CLI arguments
@@ -997,7 +1002,7 @@ static WCHAR *get_configuration_path(void)
 {
 	static const WCHAR *const DEFAULT_PATH = L"ClearClipboard.ini";
 	WCHAR *buffer = NULL;
-	WCHAR *const path = get_executable_path();
+	WCHAR *path = get_executable_path();
 
 	if(path)
 	{
@@ -1023,7 +1028,7 @@ static WCHAR *get_configuration_path(void)
 				}
 			}
 		}
-		LocalFree((HLOCAL)path);
+		FREE(path);
 	}
 
 	if(!buffer)
@@ -1057,7 +1062,7 @@ static WCHAR *get_executable_path(void)
 		}
 		if((size < MAXWORD) && (result >= size))
 		{
-			LocalFree((HLOCAL)buffer);
+			FREE(buffer);
 			size *= 2U;
 			if(!(buffer = (WCHAR*) LocalAlloc(LPTR, size * sizeof(WCHAR))))
 			{
@@ -1070,7 +1075,28 @@ static WCHAR *get_executable_path(void)
 		}
 	}
 
-	LocalFree((HLOCAL)buffer);
+	FREE(buffer);
+	return NULL;
+}
+
+static WCHAR *get_system_directory(void)
+{
+	const UINT size = GetSystemDirectoryW(NULL, 0U);
+	if(size > 0U)
+	{
+		WCHAR *buffer = (WCHAR*) LocalAlloc(LPTR, size * sizeof(WCHAR));
+		if(buffer)
+		{
+			const UINT result = GetSystemDirectoryW(buffer, size);
+			if((result > 0U) && (result < size))
+			{
+				return buffer;
+			}
+			FREE(buffer);
+		}
+	}
+
+	PRINT("failed to determine system directory!");
 	return NULL;
 }
 
@@ -1246,6 +1272,34 @@ static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCH
 }
 
 // ==========================================================================
+// Servivce routines
+// ==========================================================================
+
+static DWORD get_service_status(const WCHAR *const name)
+{
+	DWORD result = 0U;
+
+	const SC_HANDLE scm = OpenSCManagerW(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
+	if(scm)
+	{
+		const SC_HANDLE cbdhsvc = OpenServiceW(scm, name, SC_MANAGER_ENUMERATE_SERVICE);
+		if(cbdhsvc)
+		{
+			SERVICE_STATUS_PROCESS status = { 0 };
+			DWORD bytes_needed = 0U;
+			if(QueryServiceStatusEx(cbdhsvc, SC_STATUS_PROCESS_INFO, (BYTE*)&status, sizeof(SERVICE_STATUS_PROCESS), &bytes_needed))
+			{
+				result = status.dwCurrentState;
+			}
+			CloseServiceHandle(cbdhsvc);
+		}
+		CloseServiceHandle(scm);
+	}
+
+	return result;
+}
+
+// ==========================================================================
 // String helper routines
 // ==========================================================================
 
@@ -1257,6 +1311,20 @@ static WCHAR *quote_string(const WCHAR *const text)
 		lstrcpyW(buffer, L"\"");
 		lstrcatW(buffer, text);
 		lstrcatW(buffer, L"\"");
+		return buffer;
+	}
+	
+	PRINT("failed to allocate string buffer!");
+	return NULL;
+}
+
+static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2)
+{
+	WCHAR *const buffer = (WCHAR*) LocalAlloc(LPTR, (lstrlenW(text_1) + lstrlenW(text_2) + 1U) * sizeof(WCHAR));
+	if(buffer)
+	{
+		lstrcpyW(buffer, text_1);
+		lstrcatW(buffer, text_2);
 		return buffer;
 	}
 	
