@@ -100,7 +100,7 @@ static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WC
 static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD value);
 static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
-static DWORD get_service_status(const WCHAR *const name);
+static BOOL find_running_service(const WCHAR *const name_prefix);
 static WCHAR *quote_string(const WCHAR *const text);
 static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
 static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor);
@@ -665,39 +665,42 @@ static BOOL check_clipboard_settings(void)
 		return TRUE;
 	}
 
-	if(get_service_status(L"cbdhsvc") > SERVICE_STOPPED)
+	if(find_running_service(L"cbdhsvc"))
 	{
 		PRINT("warning: windows clipboard history service is enabled!");
 		if(MessageBoxW(NULL, L"The \"Clipboard History\" service of Windows 10 is currently running on your machine. As long as that service is running, Windows 10 will silently keep a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nIn order to keep your sensitive data private, it is *highly* recommended to disable the \"Clipboard History\" service! Do you want to disable the \"Clipboard History\" service now?", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_YESNO | MB_TOPMOST) == IDYES)
 		{
-			for(;;)
+			WCHAR *sys_path = get_system_directory();
+			if(sys_path)
 			{
-				BOOL success = FALSE;
-				WCHAR *sys_path = get_system_directory();
-				if(sys_path)
+				WCHAR *reg_path = concat_strings(sys_path, L"\\reg.exe");
+				if(reg_path)
 				{
-					WCHAR *reg_path = concat_strings(sys_path, L"\\reg.exe");
-					if(reg_path)
+					BOOL success = FALSE;
+					while(!success)
 					{
-						if(success = (((int)ShellExecuteW(NULL, L"runas", L"reg.exe", L"ADD HKLM\\SYSTEM\\CurrentControlSet\\Services\\cbdhsvc /f /v Start /t REG_DWORD /d 4", NULL, SW_HIDE)) > 32))
+						if(success = (((INT_PTR)ShellExecuteW(NULL, L"runas", reg_path, L"ADD HKLM\\SYSTEM\\CurrentControlSet\\Services\\cbdhsvc /f /v Start /t REG_DWORD /d 4", NULL, SW_HIDE)) > 32))
 						{
-							MessageBoxW(NULL, L"Clipboard History service has been disabled. Please reboot your computer for these changes to take effect!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONINFORMATION | MB_TOPMOST);
+							MessageBoxW(NULL, L"The \"Clipboard History\" service has been disabled. Please reboot your computer for these changes to take effect!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONINFORMATION | MB_TOPMOST);
 						}
-						FREE(reg_path);
+						else
+						{
+							if(MessageBoxW(NULL, L"Failed to disable the service. Retry?", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONERROR | MB_YESNO | MB_TOPMOST) == IDNO)
+							{
+								break; /*aborted*/
+							}
+						}
 					}
-					FREE(sys_path);
+					FREE(reg_path);
 				}
-				if(!success)
-				{
-					if(MessageBoxW(NULL, L"Failed to disable the service. Retry?", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONERROR | MB_YESNO| MB_TOPMOST) == IDYES)
-					{
-						continue;
-					}
-				}
-				break; /*completed*/
+				FREE(sys_path);
 			}
+			MessageBoxW(NULL, L"The ClearClipboard program is going to exit for now!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_TOPMOST);
 		}
-		MessageBoxW(NULL, L"The ClearClipboard program is going to exit for now!", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_TOPMOST);
+		else
+		{
+			MessageBoxW(NULL, L"The ClearClipboard program is going to exit now!\n\nNote: If you want to use ClearClipboard despite the fact that the \"Clipboard History\" service is still running on your machine, pelease refer to the documentation (README file).", L"ClearClipboard v" WTEXT(VERSION_STR), MB_ICONWARNING | MB_TOPMOST);
+		}
 		return FALSE;
 	}
 
@@ -913,8 +916,6 @@ static BOOL delete_shell_notify_icon(const HWND hwnd)
 
 	return TRUE;
 }
-
-#undef INITIALIZE_TIP
 
 // ==========================================================================
 // About dialog
@@ -1272,26 +1273,51 @@ static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCH
 }
 
 // ==========================================================================
-// Servivce routines
+// Service routines
 // ==========================================================================
 
-static DWORD get_service_status(const WCHAR *const name)
+static BOOL find_running_service(const WCHAR *const name_prefix)
 {
-	DWORD result = 0U;
+	BOOL result = FALSE;
 
 	const SC_HANDLE scm = OpenSCManagerW(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
 	if(scm)
 	{
-		const SC_HANDLE cbdhsvc = OpenServiceW(scm, name, SC_MANAGER_ENUMERATE_SERVICE);
-		if(cbdhsvc)
+		DWORD buffer_size = 0U, bytes_needed = 0U, services_returned = 0U, resume_handle = 0U;
+		const int prefix_len = lstrlenW(name_prefix);
+		BOOL success = EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, NULL, 0U, &buffer_size, &services_returned, &resume_handle, NULL);
+		if((success || (GetLastError() == ERROR_MORE_DATA)) && (buffer_size > 0U))
 		{
-			SERVICE_STATUS_PROCESS status = { 0 };
-			DWORD bytes_needed = 0U;
-			if(QueryServiceStatusEx(cbdhsvc, SC_STATUS_PROCESS_INFO, (BYTE*)&status, sizeof(SERVICE_STATUS_PROCESS), &bytes_needed))
+			ENUM_SERVICE_STATUS_PROCESS *buffer = (ENUM_SERVICE_STATUS_PROCESS*) LocalAlloc(LPTR, buffer_size);
+			if(buffer)
 			{
-				result = status.dwCurrentState;
+				for(;;)
+				{
+					success = EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, (BYTE*)buffer, buffer_size, &bytes_needed, &services_returned, &resume_handle, NULL);
+					if(success || (GetLastError() == ERROR_MORE_DATA))
+					{
+						DWORD i;
+						for(i = 0U; i < services_returned; ++i)
+						{
+							if(lstrlenW(buffer[i].lpServiceName) >= prefix_len)
+							{
+								buffer[i].lpServiceName[prefix_len] = L'\0';
+								if(!lstrcmpiW(buffer[i].lpServiceName, name_prefix))
+								{
+									result = TRUE;
+									break;
+								}
+							}
+						}
+						if(!(success || result))
+						{
+							continue;
+						}
+					}
+					break; /*failure*/
+				}
+				FREE(buffer);
 			}
-			CloseServiceHandle(cbdhsvc);
 		}
 		CloseServiceHandle(scm);
 	}
