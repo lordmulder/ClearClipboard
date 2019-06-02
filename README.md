@@ -7,7 +7,6 @@
 
 *Note:* The ClearClipboard program runs "hidden" in the background. However, there will be an icon in the [notification area](https://docs.microsoft.com/en-us/windows/desktop/uxguide/winenv-notification), which can be used to control or terminate ClearClipboard. Only one instance of ClearClipboard can be running at a time.
 
-
 # System requirements
 
 ClearClipboard runs on Windows Vista or newer. The "x64" version requires a 64-Bit version of Windows Vista or newer.
@@ -18,11 +17,32 @@ Windows XP is **not** supported due to the lack of the `AddClipboardFormatListen
 
 Windows 10 contains some "problematic" features that can put a risk on sensitive information copied to the clipboard:
 
-* The first of those features is called "Clipboard History", which will silently keep a history (copy) of *all* data that has been copied to clipboard at some time. This history will persist even after the clipboard has been cleared!
+* The first of those features is called [*Clipboard History*](https://www.tenforums.com/tutorials/109799-turn-off-clipboard-history-windows-10-a.html), which will silently keep a history (copy) of *all* data that has been copied to clipboard at some time. This history will persist even after the clipboard has been cleared!
 
-* The second feature is called "Automatic Syncing" (Cloud Clipboard), which will automatically upload *all* data that is copied to clipboard to the Microsoft cloud servers – purportedly to synchronize the clipboard between your devices!
+* The second feature is called [*Automatic Syncing*](https://www.tenforums.com/tutorials/110048-enable-disable-clipboard-sync-across-devices-windows-10-a.html) (Cloud Clipboard), which will automatically upload *all* data that is copied to clipboard to the Microsoft cloud servers – purportedly to synchronize the clipboard between your devices!
 
-We ***highly*** recommend to *disable* both of these features in order to allow ClearClipboard to function as expected. You can easily do this in the "Windows Settings" on the "System/Clipboard" page. See [here](https://www.tenforums.com/tutorials/109799-turn-off-clipboard-history-windows-10-a.html) and [here](https://www.tenforums.com/tutorials/110048-enable-disable-clipboard-sync-across-devices-windows-10-a.html) for more information!
+We ***highly*** recommend to *disable* both of these features in order to keep your data safe and allow ClearClipboard to function as expected. To the best of our knowledge, the most reliable way to achieve this is to completely *disabled* the "Clipboard History" (`cbdhsvc`) system service. ClearClipboard will now detect whether the "problematic" service is running on your system, and if so, offer to disable that service. Note that a *reboot* will be required in order to make the changes take effect.
+
+### Registry Hacks
+
+Optionally, you can *disable* the "Clipboard History" service with the following **`.reg`** file:
+
+	Windows Registry Editor Version 5.00
+
+	[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\cbdhsvc]
+	"Start"=dword:00000004
+	[HKEY_CURRENT_USER\Software\Microsoft\Clipboard]
+	"EnableClipboardHistory"=dword:00000000
+
+
+Use this **`.reg`** file, if you ever whish to *re-enable* the "Clipboard History" service:
+
+	Windows Registry Editor Version 5.00
+
+	[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\cbdhsvc]
+	"Start"=dword:00000003
+	[HKEY_CURRENT_USER\Software\Microsoft\Clipboard]
+	"EnableClipboardHistory"=dword:00000001
 
 
 # Command-line Options
@@ -75,8 +95,8 @@ The following configuration parameters are supported:
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
 
-* **`DisableWarningMessages=<0|1>`**
-  If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows 10 features. Default: `0`.
+* **`DisableWarningMessages=<0|1>`**  
+  If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows 10 features that may expose your data to a risk. It is *not* recommended to do set this parameter, except for debugging purposes! Default: `0`.
 
 ## Example Configuration
 
@@ -100,6 +120,12 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 
 # Version History
+
+## Version 1.05 [2019-06-02]
+
+* Detect whether the Windows 10 "Clipboard History" service is running, and, if so, suggest to disable.
+
+* Some fixes and improvements.
 
 ## Version 1.04 [2019-06-01]
 
