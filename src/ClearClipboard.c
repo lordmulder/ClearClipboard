@@ -921,28 +921,45 @@ static BOOL delete_shell_notify_icon(const HWND hwnd)
 // About dialog
 // ==========================================================================
 
+#define ABOUT_TEXT_SHRT \
+	L"ClearClipboard v" WTEXT(VERSION_STR) L" [" WTEXT(__DATE__) L"]\n" \
+	L"Copyright(\x24B8) 2019 LoRd_MuldeR <mulder2@gmx.de>\n\n" \
+	L"This software is released under the MIT License.\n" \
+	L"(https://opensource.org/licenses/MIT)\n\n" \
+	L"For news and updates please check the website at:\n" \
+	L"\x2022 http://muldersoft.com/\n" \
+	L"\x2022 http://muldersoft.sourceforge.net/\n\n" \
+	L"Source code available from:\n" \
+	L"https://github.com/lordmulder/ClearClipboard"
+
+#define ABOUT_TEXT_FULL \
+	ABOUT_TEXT_SHRT \
+	L"\n\n\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\x2015\n\n" \
+	L"DISCLAIMER: " \
+	L"The software is provided \"as is\", without warranty of any kind, express or implied, including" \
+	L"but not limited to the warranties of merchantability, fitness for a particular purpose and" \
+	L"noninfringement. In no event shall the authors or copyright holders be liable for any claim," \
+	L"damages or other liability, whether in an action of contract, tort or otherwise, arising from," \
+	L"out of or in connection with the software or the use or other dealings in the software.\n\n" \
+	L"If you agree to the license terms, click OK in order to proceed. Otherwise you must click Cancel to exit the program."
+
 static BOOL about_screen(const BOOL first_run)
 {
-	const int resut = MessageBoxW(
-		NULL,
-		L"ClearClipboard v" WTEXT(VERSION_STR) L" [" WTEXT(__DATE__) L"]\n"
-		L"Copyright(\x24B8) 2019 LoRd_MuldeR <mulder2@gmx.de>\n\n"
-		L"This software is released under the MIT License.\n"
-		L"(https://opensource.org/licenses/MIT)\n\n"
-		L"For news and updates please check the website at:\n"
-		L"\x2022 http://muldersoft.com/\n"
-		L"\x2022 https://github.com/lordmulder/ClearClipboard\n\n"
-		L"DISCLAIMER: "
-		L"The software is provided \"as is\", without warranty of any kind, express or implied, including"
-		L"but not limited to the warranties of merchantability, fitness for a particular purpose and"
-		L"noninfringement. In no event shall the authors or copyright holders be liable for any claim,"
-		L"damages or other liability, whether in an action of contract, tort or otherwise, arising from,"
-		L"out of or in connection with the software or the use or other dealings in the software.",
-		L"About...",
-		MB_ICONINFORMATION | MB_TOPMOST | (first_run ? MB_OKCANCEL|MB_DEFBUTTON2 : MB_OK)
-	);
+	MSGBOXPARAMSW params;
+	SecureZeroMemory(&params, sizeof(MSGBOXPARAMSW));
+	
+	params.cbSize = sizeof(MSGBOXPARAMSW);
+	params.hInstance = GetModuleHandle(NULL);
+	params.lpszCaption = first_run ? L"License Terms" : L"About...";
+	params.lpszText = first_run ? ABOUT_TEXT_FULL : ABOUT_TEXT_SHRT;
+	params.lpszIcon = MAKEINTRESOURCEW(101);
+	params.dwStyle = MB_TOPMOST | MB_USERICON;
+	if(first_run)
+	{
+		params.dwStyle |= MB_OKCANCEL | MB_DEFBUTTON2;
+	}
 
-	return (resut == IDOK);
+	return (MessageBoxIndirectW(&params) == IDOK);
 }
 
 static BOOL show_disclaimer(void)
