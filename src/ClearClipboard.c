@@ -468,9 +468,6 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 {
 	switch(message)
 	{
-	case WM_CLOSE:
-		PostQuitMessage(0);
-		break;
 	case WM_CLIPBOARDUPDATE:
 		TRACE("WM_CLIPBOARDUPDATE");
 		{
@@ -578,6 +575,9 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 				PLAY_SOUND(1U);
 			}
 		}
+		break;
+	case WM_CLOSE:
+		PostQuitMessage(0);
 		break;
 	default:
 		if(message == g_taskbar_created)
@@ -1387,8 +1387,11 @@ static BOOL find_running_service(const WCHAR *const name_prefix)
 					{
 						if(!StrCmpNIW(buffer[i].lpServiceName, name_prefix, prefix_len))
 						{
-							result = TRUE;
-							break;
+							if((buffer[i].lpServiceName[prefix_len] == L'\0') || (buffer[i].lpServiceName[prefix_len] == L'_'))
+							{
+								result = TRUE;
+								break;
+							}
 						}
 					}
 					if(!(success || result))
