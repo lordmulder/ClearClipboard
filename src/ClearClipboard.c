@@ -370,7 +370,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	}
 
 	// Register hotkey
-	if((cfg_hotkey >= 0x100) && (cfg_hotkey <= 0xFFF))
+	if((cfg_hotkey >= 0x100) && (cfg_hotkey <= 0xFFF) && (LOBYTE(cfg_hotkey) >= 0x08))
 	{
 		if(!RegisterHotKey(hwnd, ID_HOTKEY, HIBYTE(cfg_hotkey) | MOD_NOREPEAT, LOBYTE(cfg_hotkey)))
 		{

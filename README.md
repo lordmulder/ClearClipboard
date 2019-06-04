@@ -93,10 +93,10 @@ The following configuration parameters are supported:
   > ClearClipboard uses the *"Empty Recycle Bin"* system sound, as set up in the control panel (`control mmsys.cpl`). If that sound file is *not* found or was set to "None", ClearClipboard will fall back to the "Asterisk" default sound.
 
 * **`Hotkey=<key_id>`**  
-  Specifies a global hotkey (keyboard shortcut) that, when pressed, immediately clears the clipboard. Default: *None*.
-  > The hotkey is specified as a three-digit *hexadecimal* number of the format **`0xMNN`**. Here `M` is the one-digit *modifier*, and `NN` is the two-digit *virtual-key code*. Supported *modifiers* include Alt-key (`1`), Ctrl-key (`2`), Shift-key (`4`) and Windows-key (`8`). Multiple modifiers are possible by adding up the corresponding numbers, in hexadecimal numeral system. The *virtual-key code* can be any one that exists in Windows' [Virtual-Key Codes](https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes) list.  
-  >> **Example:** In order to use the combination *Alt+Ctrl+B* as your hotkey, you have to specify the value `0x342`.  
-  >> …because the virtual-key code for "B" is `0x42`, and `1` (Alt-key) plus `2` (Ctrl-key) makes `3`.
+  Specifies a system-wide hotkey (keyboard shortcut) that immediately clears the clipboard. The hotkey is specified as a three-digit *hexadecimal* number of the format **`0xMNN`**. Here `M` is the one-digit *modifier*, and `NN` is the two-digit *virtual-key code*. Supported *modifiers* are Alt-key (`1`), Ctrl-key (`2`), Shift-key (`4`) and Win-key (`8`). Default: none.
+  > Multiple modifiers can be combined by adding up the corresponding numbers, in hexadecimal numeral system. The *virtual-key code* can be any one defined in the [Virtual-Key Codes](https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes) table, except for codes smaller than `0x08`.
+  >> **Example:** In order to use the combination »Alt+Ctrl+B« as your hotkey, you have to specify the value `0x342`.  
+  >> …because the virtual-key code for »B« is `0x42`, and `1` (Alt-key) plus `2` (Ctrl-key) makes `3`.
 
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
