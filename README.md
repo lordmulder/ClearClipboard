@@ -67,7 +67,10 @@ In addition, one or more of the following options may be appended to the command
   Suppress message boxes. Use, e.g., in combination with `--install` or `--uninstall` command.
 
 * **`--debug`**  
-  Enable debug outputs (verbose mode). You can use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool to show the generated debug messages.
+  Enable diagnostic output. You can use the [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview) tool from Sysinternals to show the generated messages.
+
+* **`--trace`**  
+  Enable more verbose diagnostic output. Not normally recommended, as the system performance may be degraded.
 
 * **`--slunk`**  
   Enable slunk mode for improved user experience. Check it out!
@@ -93,10 +96,8 @@ The following configuration parameters are supported:
   > ClearClipboard uses the *"Empty Recycle Bin"* system sound, as set up in the control panel (`control mmsys.cpl`). If that sound file is *not* found or was set to "None", ClearClipboard will fall back to the "Asterisk" default sound.
 
 * **`Hotkey=<key_id>`**  
-  Specifies a system-wide hotkey (keyboard shortcut) that immediately clears the clipboard. The hotkey is specified as a three-digit *hexadecimal* number of the format **`0xMNN`**. Here `M` is the one-digit *modifier*, and `NN` is the two-digit *virtual-key code*. Supported *modifiers* are Alt-key (`1`), Ctrl-key (`2`), Shift-key (`4`) and Win-key (`8`). Default: none.
-  > Multiple modifiers can be combined by adding up the corresponding numbers, in hexadecimal numeral system. The *virtual-key code* can be any one defined in the [Virtual-Key Codes](https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes) table, except for codes smaller than `0x08`.
-  >> **Example:** In order to use the combination »Alt+Ctrl+B« as your hotkey, you have to specify the value `0x342`.  
-  >> …because the virtual-key code for »B« is `0x42`, and `1` (Alt-key) plus `2` (Ctrl-key) makes `3`.
+  Specifies a system-wide hotkey (shortcut) to immediately clear the clipboard. The hotkey is specified as a three-digit *hexadecimal* number in the **`0xMNN`** format: `M` is the one-digit *modifier*, and `NN` is the two-digit *virtual-key code*. Allowed *modifiers* include Alt-key (`0x1`), Ctrl-key (`0x2`), Shift-key (`0x4`) and Win-key (`0x8`). Default: disabled.
+  > Multiple modifiers can be combined by adding up the corresponding numbers, in hexadecimal numeral system. The *virtual-key code* can be any one defined in the [Virtual-Key Codes](https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes) table, except for codes smaller than `0x08`. For example, in order to use the combination »Alt+Ctrl+B« as your hotkey, you have to specify the value `0x342`. That is because the virtual-key code for »B« is `0x42`, and `0x1` (i.e Alt-key) plus `0x2` (i.e. Ctrl-key) makes `0x3`.
 
 * **`Halted=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
@@ -109,10 +110,11 @@ The following configuration parameters are supported:
 An example configuration file:
 
 	[ClearClipboard]
-	Timeout=30000
-	TextOnly=0
-	Sound=1
-	Halted=0
+	Timeout=90000
+	TextOnly=1
+	Sound=2
+	Hotkey=0x342
+	Halted=1
 
 
 # Updates & Source Code
@@ -126,6 +128,14 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 
 # Version History
+
+## Version 1.06 [2019-06-05]
+
+* Optional system-wide *hotkey* to immediately clear the clipboard. Use parameter `Hotkey` to configure.
+
+* Allow more fine-grained control of diagnostic output.
+
+* Some fixes and improvements.
 
 ## Version 1.05 [2019-06-02]
 
