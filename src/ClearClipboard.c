@@ -99,6 +99,7 @@ static BOOL play_sound_effect(void);
 static WCHAR *get_configuration_path(void);
 static WCHAR *get_executable_path(void);
 static WCHAR *get_system_directory(void);
+static BOOL file_exists(const WCHAR *const path);
 static int get_config_value(const WCHAR *const path, const WCHAR *const name, const int default_value, const int min_value, const int max_value);
 static DWORD reg_read_value(const HKEY root, const WCHAR *const path, const WCHAR *const name, const DWORD default_value);
 static WCHAR *reg_read_string(const HKEY root, const WCHAR *const path, const WCHAR *const name);
@@ -108,8 +109,8 @@ static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCH
 static BOOL find_running_service(const WCHAR *const name_prefix);
 static WCHAR *quote_string(const WCHAR *const text);
 static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
+static void output_formatted_string(const char *const format, ...);
 static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor);
-static void output_debug_string_fmt(const char *const format, ...);
 
 // ==========================================================================
 // Utility macros
@@ -133,7 +134,7 @@ while(0)
 #define _OUTPUT_DBGSTR2(X,Y,...) do \
 { \
 	if (cfg_debug >= (X)) \
-		output_debug_string_fmt("ClearClipboard -- " Y "\n", __VA_ARGS__); \
+		output_formatted_string("ClearClipboard -- " Y "\n", __VA_ARGS__); \
 } \
 while(0)
 #define DEBUG2(X,...) _OUTPUT_DBGSTR2(1U, X, __VA_ARGS__)
@@ -172,6 +173,9 @@ while(0)
 } \
 while(0)
 
+// Boolify
+#define BOOLIFY(X) ((X) ? "true" : "false")
+
 // ==========================================================================
 // Entry point function
 // ==========================================================================
@@ -203,7 +207,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 {
 	int result = 0, status = -1;
 	UINT mode = 0U;
-	HANDLE mutex = NULL;
+	HANDLE mutex = NULL, sf_lock = INVALID_HANDLE_VALUE;
 	HWND hwnd = NULL;
 	BOOL have_listener = FALSE;
 	UINT_PTR timer_id = (UINT_PTR)NULL;
@@ -235,7 +239,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		DEBUG("closing all running instances...");
 		while(hwnd = FindWindowExW(NULL, hwnd, CLASS_NAME, NULL))
 		{
-			DEBUG("sending WM_CLOSE");
+			DEBUG2("sending WM_CLOSE message to: hwnd=%p", hwnd);
 			SendMessageW(hwnd, WM_CLOSE, 0U, 0U);
 		}
 		if(mode == 1U)
@@ -271,28 +275,37 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 			ERROR_EXIT(1);
 		}
 	}
-
-	// Print status
-	DEBUG("starting up...");
+	else
+	{
+		DEBUG("failed to create mutex!");
+	}
 
 	// Read configuration
 	if(g_config_path = get_configuration_path())
 	{
-		cfg_timeout = (UINT) get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000, 3600000/*1h*/);
-		cfg_textual_only = !!get_config_value(g_config_path, L"TextOnly", FALSE, FALSE, TRUE);
-		cfg_sound_enabled = (UINT) get_config_value(g_config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0, 2);
-		cfg_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
-		cfg_hotkey = (WORD) get_config_value(g_config_path, L"Hotkey", 0U, 0U, 0x8FF);
-		cfg_ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
+		if(file_exists(g_config_path))
+		{
+			DEBUG("reading configuration file...");
+			cfg_timeout = (UINT) get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000, 3600000/*1h*/);
+			cfg_textual_only = !!get_config_value(g_config_path, L"TextOnly", FALSE, FALSE, TRUE);
+			cfg_sound_enabled = (UINT) get_config_value(g_config_path, L"Sound", DEFAULT_SOUND_LEVEL, 0, 2);
+			cfg_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
+			cfg_hotkey = (WORD) get_config_value(g_config_path, L"Hotkey", 0U, 0U, 0x8FF);
+			cfg_ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
+		}
+		else
+		{
+			DEBUG("configuration file not found!");
+		}
 	}
 
 	// Dump config variables
 	DEBUG2("config: timeout=%u", cfg_timeout);
-	DEBUG2("config: halted=%u", (UINT)cfg_halted);
-	DEBUG2("config: textual_only=%u", (UINT)cfg_textual_only);
+	DEBUG2("config: textual_only=%s", BOOLIFY(cfg_textual_only));
+	DEBUG2("config: halted=%s", BOOLIFY(cfg_halted));
 	DEBUG2("config: sound_enabled=%u", cfg_sound_enabled);
 	DEBUG2("config: hotkey=0x%03X", (UINT)cfg_hotkey);
-	DEBUG2("config: ignore_warning=%u", (UINT)cfg_ignore_warning);
+	DEBUG2("config: ignore_warning=%s", BOOLIFY(cfg_ignore_warning));
 
 	// Show the disclaimer message
 	if(!show_disclaimer())
@@ -305,6 +318,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	{
 		ERROR_EXIT(4);
 	}
+
+	// Print status
+	DEBUG("starting up...");
 
 	// Register "TaskbarCreated" window message
 	if(g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated"))
@@ -333,7 +349,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Detect sound file path
 	if(g_sound_file = reg_read_string(HKEY_CURRENT_USER, L"AppEvents\\Schemes\\Apps\\Explorer\\EmptyRecycleBin\\.Current", L""))
 	{
-		if((!g_sound_file[0]) || (GetFileAttributesW(g_sound_file) == INVALID_FILE_ATTRIBUTES))
+		if(g_sound_file[0] && file_exists(g_sound_file))
+		{
+			if((sf_lock = CreateFileW(g_sound_file, FILE_GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0U, NULL)) != INVALID_HANDLE_VALUE)
+			{
+				SetHandleInformation(sf_lock, HANDLE_FLAG_PROTECT_FROM_CLOSE, HANDLE_FLAG_PROTECT_FROM_CLOSE);
+			}
+			else
+			{
+				DEBUG("failed to open sound file for reading!");
+				FREE(g_sound_file);
+			}
+		}
+		else
 		{
 			DEBUG("sound file does not exist!");
 			FREE(g_sound_file);
@@ -456,6 +484,7 @@ clean_up:
 		DestroyIcon(g_app_icon[1U]);
 	}
 
+
 	// Free sound file path
 	if(g_sound_file)
 	{
@@ -466,6 +495,13 @@ clean_up:
 	if(g_config_path)
 	{
 		FREE(g_config_path);
+	}
+
+	// Close sound file
+	if(sf_lock != INVALID_HANDLE_VALUE)
+	{
+		SetHandleInformation(sf_lock, HANDLE_FLAG_PROTECT_FROM_CLOSE, 0U);
+		CloseHandle(sf_lock);
 	}
 
 	// Close mutex
@@ -1182,6 +1218,12 @@ static WCHAR *get_system_directory(void)
 	return NULL;
 }
 
+static BOOL file_exists(const WCHAR *const path)
+{
+	const DWORD attribs = GetFileAttributesW(path);
+	return (attribs != INVALID_FILE_ATTRIBUTES) && (!(attribs & FILE_ATTRIBUTE_DIRECTORY));
+}
+
 // ==========================================================================
 // Configuration routines
 // ==========================================================================
@@ -1416,8 +1458,11 @@ static BOOL find_running_service(const WCHAR *const name_prefix)
 						continue;
 					}
 				}
-				TRACE("failed to enumerate active services!");
-				break; /*failure*/
+				else
+				{
+					TRACE("failed to enumerate active services!");
+				}
+				break; /*completed*/
 			}
 			FREE(buffer);
 		}
@@ -1468,6 +1513,19 @@ static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_
 	return NULL;
 }
 
+static void output_formatted_string(const char *const format, ...)
+{
+	char buffer[128U];
+	va_list args;
+	va_start(args, format);
+	if(wvnsprintfA(buffer, 128U, format, args) > 0)
+	{
+		buffer[127U] = '\0';
+		OutputDebugStringA(buffer);
+	}
+	va_end(args);
+}
+
 // ==========================================================================
 // Windows version helper
 // ==========================================================================
@@ -1482,18 +1540,4 @@ static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD w
 	osvi.dwMinorVersion = wMinorVersion;
 	osvi.wServicePackMajor = wServicePackMajor;
 	return VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) != FALSE;
-}
-
-// ==========================================================================
-// Debug output functions
-// ==========================================================================
-
-static void output_debug_string_fmt(const char *const format, ...)
-{
-	char buffer[64U];
-	va_list args;
-	va_start(args, format),
-	wvnsprintfA(buffer, 64U, format, args);
-	va_end(args);
-	OutputDebugStringA(buffer);
 }
