@@ -109,6 +109,7 @@ static BOOL find_running_service(const WCHAR *const name_prefix);
 static WCHAR *quote_string(const WCHAR *const text);
 static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
 static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD wMinorVersion, const WORD wServicePackMajor);
+static void output_debug_string_fmt(const char *const format, ...);
 
 // ==========================================================================
 // Utility macros
@@ -119,14 +120,24 @@ static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD w
 #define WTEXT(X) _WTEXT_(X)
 
 // Debug output
-#define OUTPUT_DBGSTR(X,Y) do \
+#define _OUTPUT_DBGSTR(X,Y) do \
 { \
 	if (cfg_debug >= (X)) \
 		OutputDebugStringA("ClearClipboard -- " Y "\n"); \
 } \
 while(0)
-#define DEBUG(X) OUTPUT_DBGSTR(1U, X)
-#define TRACE(X) OUTPUT_DBGSTR(2U, X)
+#define DEBUG(X) _OUTPUT_DBGSTR(1U, X)
+#define TRACE(X) _OUTPUT_DBGSTR(2U, X)
+
+// Formatted output
+#define _OUTPUT_DBGSTR2(X,Y,...) do \
+{ \
+	if (cfg_debug >= (X)) \
+		output_debug_string_fmt("ClearClipboard -- " Y "\n", __VA_ARGS__); \
+} \
+while(0)
+#define DEBUG2(X,...) _OUTPUT_DBGSTR2(1U, X, __VA_ARGS__)
+#define TRACE2(X,...) _OUTPUT_DBGSTR2(2U, X, __VA_ARGS__)
 
 // Play sound
 #define PLAY_SOUND(X) do \
@@ -264,7 +275,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Print status
 	DEBUG("starting up...");
 
-	// Read config from INI file
+	// Read configuration
 	if(g_config_path = get_configuration_path())
 	{
 		cfg_timeout = (UINT) get_config_value(g_config_path, L"Timeout", DEFAULT_TIMEOUT, 1000, 3600000/*1h*/);
@@ -274,6 +285,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 		cfg_hotkey = (WORD) get_config_value(g_config_path, L"Hotkey", 0U, 0U, 0x8FF);
 		cfg_ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
 	}
+
+	// Dump config variables
+	DEBUG2("config: timeout=%u", cfg_timeout);
+	DEBUG2("config: halted=%u", (UINT)cfg_halted);
+	DEBUG2("config: textual_only=%u", (UINT)cfg_textual_only);
+	DEBUG2("config: sound_enabled=%u", cfg_sound_enabled);
+	DEBUG2("config: hotkey=0x%03X", (UINT)cfg_hotkey);
+	DEBUG2("config: ignore_warning=%u", (UINT)cfg_ignore_warning);
 
 	// Show the disclaimer message
 	if(!show_disclaimer())
@@ -341,7 +360,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	// Register window class
 	wcl.lpfnWndProc   = my_wnd_proc;
 	wcl.hInstance     = hInstance;
-	wcl.hbrBackground = (HBRUSH) GetStockObject(NULL_BRUSH);
 	wcl.lpszClassName = CLASS_NAME;
 	if(!RegisterClassW(&wcl))
 	{
@@ -1019,12 +1037,12 @@ static BOOL show_disclaimer(void)
 		}
 	}
 
-	DEBUG("disclaimer not accepted yet...");
-
 	if(reg_read_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, 0U) != REG_VALUE_DATA)
 	{
+		DEBUG("disclaimer not accepted yet...");
 		if(about_screen(TRUE))
 		{
+			DEBUG("disclaimer accepted!");
 			reg_write_value(HKEY_CURRENT_USER, REG_VALUE_PATH, REG_VALUE_NAME, REG_VALUE_DATA);
 		}
 		else
@@ -1034,7 +1052,6 @@ static BOOL show_disclaimer(void)
 		}
 	}
 
-	DEBUG("disclaimer accepted!");
 	return TRUE;
 }
 
@@ -1465,4 +1482,18 @@ static BOOL is_windows_version_or_greater(const WORD wMajorVersion, const WORD w
 	osvi.dwMinorVersion = wMinorVersion;
 	osvi.wServicePackMajor = wServicePackMajor;
 	return VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) != FALSE;
+}
+
+// ==========================================================================
+// Debug output functions
+// ==========================================================================
+
+static void output_debug_string_fmt(const char *const format, ...)
+{
+	char buffer[64U];
+	va_list args;
+	va_start(args, format),
+	wvnsprintfA(buffer, 64U, format, args);
+	va_end(args);
+	OutputDebugStringA(buffer);
 }
