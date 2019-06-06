@@ -1,5 +1,5 @@
-% ClearClipboard
-% Periodically ClearClipboard, e.g. to hide sensitive information  
+% 📋 ClearClipboard
+% Periodically clear the clipboard, e.g. to hide sensitive information
 
 # Introduction
 
