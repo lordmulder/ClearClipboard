@@ -44,6 +44,7 @@ Use this **`.reg`** file, if you ever whish to *re-enable* the "Clipboard Histor
 	[HKEY_CURRENT_USER\Software\Microsoft\Clipboard]
 	"EnableClipboardHistory"=dword:00000001
 
+As always, a reboot will be required in order to make the above registry "hacks" take effect!
 
 # Command-line Options
 
