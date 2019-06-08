@@ -76,7 +76,7 @@ static const UINT cfg_debug = 2U;
 
 // Global variables
 static ULONGLONG g_tickCount = 0U;
-static UINT g_text_formats[12U] = { 0U };
+static UINT g_text_formats[16U] = { CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT, CF_DSPTEXT, 0U };
 static UINT g_taskbar_created = 0U;
 static const WCHAR *g_sound_file = NULL;
 static const WCHAR *g_config_path = NULL;
@@ -332,9 +332,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	if(cfg_textual_only)
 	{
 		size_t i;
-		for(i = 0U; i < 12U; ++i)
+		for(i = 0U; i < _countof(TEXT_FORMATS); ++i)
 		{
-			g_text_formats[i] = RegisterClipboardFormatW(TEXT_FORMATS[i]);
+			g_text_formats[4U + i] = RegisterClipboardFormatW(TEXT_FORMATS[i]);
+			TRACE2("text_format[%02u] = 0x%04X", i, g_text_formats[i]);
 		}
 	}
 
@@ -711,37 +712,9 @@ static UINT clear_clipboard(const BOOL force)
 
 static BOOL is_textual_format(void)
 {
-	UINT format = 0U;
-	BOOL is_text = FALSE;
-
-	do
-	{
-		switch(format = EnumClipboardFormats(format))
-		{
-		case CF_TEXT:
-		case CF_OEMTEXT:
-		case CF_UNICODETEXT:
-		case CF_DSPTEXT:
-			is_text = TRUE;
-			break;
-		default:
-			if(format >= 0xC000)
-			{
-				size_t i;
-				for(i = 0U; i < 12U; ++i)
-				{
-					if(format == g_text_formats[i])
-					{
-						is_text = TRUE;
-						break;
-					}
-				}
-			}
-		}
-	}
-	while((!is_text) && (format != 0U));
-
-	return is_text;
+	const INT result = GetPriorityClipboardFormat(g_text_formats, _countof(g_text_formats));
+	TRACE2("clipboard_format=%d", result);
+	return (result > 0);
 }
 
 // ==========================================================================
