@@ -1,17 +1,19 @@
 % 📋 ClearClipboard
 % Periodically clear the clipboard, e.g. to hide sensitive information
 
+
 # Introduction
 
 **ClearClipboard** is a simple tool that will *periodically clear* your clipboard. This is useful, for example, to hide sensitive information, such as passwords. The clear timeout can be configured freely and defaults to 30 seconds. Also, the clipboard will *not* simply be cleared at a fixed interval. Instead, the clear timer will be *reset* every time that new content is copied to the clipboard. This ensures that only "stale" content will be cleared; recently copied content will *never* be cleared away.
 
 *Note:* The ClearClipboard program runs "hidden" in the background. However, there will be an icon in the [notification area](https://docs.microsoft.com/en-us/windows/desktop/uxguide/winenv-notification), which can be used to control or terminate ClearClipboard. Only one instance of ClearClipboard can be running at a time.
 
+
 # System requirements
 
 ClearClipboard runs on Windows Vista or newer. The "x64" version requires a 64-Bit version of Windows Vista or newer.
 
-Windows XP is **not** supported due to the lack of the `AddClipboardFormatListener` system function!
+Windows XP is **not** supported, i.a., due to the lack of the `AddClipboardFormatListener` system function!
 
 ## Windows 10 Warning
 
@@ -45,6 +47,7 @@ Use this **`.reg`** file, if you ever whish to *re-enable* the "Clipboard Histor
 	"EnableClipboardHistory"=dword:00000001
 
 As always, a reboot will be required in order to make the above registry "hacks" take effect!
+
 
 # Command-line Options
 
@@ -104,7 +107,7 @@ The following configuration parameters are supported:
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
 
 * **`DisableWarningMessages=<0|1>`**  
-  If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows 10 features that may expose your data to a risk. It is *not* recommended to do set this parameter, except for debugging purposes! Default: `0`.
+  If this parameter is set to `1`, ClearClipboard will *not* warn about the "problematic" Windows 10 features that may expose your data to a risk. It is *not* recommended to do set this parameter, except for debugging purposes! Default: `0`.
 
 ## Example Configuration
 
@@ -199,3 +202,6 @@ The source code of ClearClipboard is available from our public Git repository, m
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <https://opensource.org/licenses/MIT>
+
+&nbsp;  
+e.o.f.
