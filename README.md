@@ -107,7 +107,7 @@ The following configuration parameters are supported:
   If this parameter is set to `1`, ClearClipboard starts in "halted" mode, i.e. with automatic clearing paused. Default: `0`.
 
 * **`DisableWarningMessages=<0|1>`**  
-  If this parameter is set to `1`, ClearClipboard will *not* warn about the "problematic" Windows 10 features that may expose your data to a risk. It is *not* recommended to do set this parameter, except for debugging purposes! Default: `0`.
+  If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows features or other programs that may expose your data to a risk. It is *not* recommended to do this, except for debugging purposes! Default: `0`.
 
 ## Example Configuration
 
@@ -132,6 +132,14 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 
 # Version History
+
+## Version 1.07 [2019-06-15]
+
+* Slightly improved detection of "textual" data on the clipboard.
+
+* Implemented detection of "Ditto", a popular clipboard manager for Microsoft Windows.
+
+* Some fixes and improvements.
 
 ## Version 1.06 [2019-06-05]
 

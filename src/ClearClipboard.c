@@ -82,12 +82,14 @@ static const WCHAR *g_sound_file = NULL;
 static const WCHAR *g_config_path = NULL;
 static HICON g_app_icon[2U] = { NULL, NULL };
 static HMENU g_context_menu = NULL;
+static HANDLE g_msgbox_thread = NULL;
 
 // Forward declaration
 static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 static UINT clear_clipboard(const BOOL force);
 static BOOL is_textual_format(void);
 static BOOL check_clipboard_history(void);
+static BOOL recheck_clipboard_history(void);
 static UINT parse_arguments(const WCHAR *const command_line);
 static BOOL update_autorun_entry(const BOOL remove);
 static BOOL create_shell_notify_icon(const HWND hwnd, const BOOL halted);
@@ -107,6 +109,7 @@ static BOOL reg_write_value(const HKEY root, const WCHAR *const path, const WCHA
 static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCHAR *const name, const WCHAR *const text);
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 static BOOL find_running_service(const WCHAR *const name_prefix);
+static BOOL messagebox_async(const WCHAR *const text, const WCHAR *const caption, const DWORD style);
 static WCHAR *quote_string(const WCHAR *const text);
 static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
 static void output_formatted_string(const char *const format, ...);
@@ -166,6 +169,9 @@ while(0)
 
 // Message box
 #define MESSAGE_BOX(X,Y) MessageBoxW(NULL, (X), L"ClearClipboard v" WTEXT(VERSION_STR), (Y) | MB_SETFOREGROUND | MB_TOPMOST)
+#define MESSAGE_BOX_ASYNC(X,Y) messagebox_async((X), L"ClearClipboard v" WTEXT(VERSION_STR), (Y) | MB_SETFOREGROUND | MB_TOPMOST)
+
+// Optional message
 #define SHOW_MESSAGE(X,Y) do \
 { \
 	if(!cfg_silent) \
@@ -469,7 +475,24 @@ clean_up:
 		RemoveClipboardFormatListener(hwnd);
 	}
 
-	// Free icon resource
+	// Destory window
+	if(hwnd)
+	{
+		DestroyWindow(hwnd);
+	}
+
+	// Stop messaging thread
+	if(g_msgbox_thread)
+	{
+		const DWORD status = WaitForSingleObject(g_msgbox_thread, 1U);
+		if((status != WAIT_OBJECT_0) && (status != WAIT_FAILED))
+		{
+			TerminateThread(g_msgbox_thread, 1U);
+		}
+		CloseHandle(g_msgbox_thread);
+	}
+
+	// Free menu resources
 	if(g_context_menu)
 	{
 		DestroyMenu(g_context_menu);
@@ -484,7 +507,6 @@ clean_up:
 	{
 		DestroyIcon(g_app_icon[1U]);
 	}
-
 
 	// Free sound file path
 	if(g_sound_file)
@@ -663,6 +685,11 @@ static UINT clear_clipboard(const BOOL force)
 
 	DEBUG("clearing clipboard...");
 
+	if(!cfg_ignore_warning)
+	{
+		recheck_clipboard_history();
+	}
+
 	for(retry = 0; retry < 32; ++retry)
 	{
 		if(retry > 0)
@@ -771,6 +798,34 @@ static BOOL check_clipboard_history(void)
 			MESSAGE_BOX(L"The ClearClipboard program is going to exit now!\n\nNote: If you want to use ClearClipboard despite the fact that the \"Clipboard History\" service is still running on your machine, pelease refer to the documentation (README file).", MB_ICONWARNING);
 		}
 		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL recheck_clipboard_history(void)
+{
+	HWND hwnd;
+
+	if(is_windows_version_or_greater(HIBYTE(WIN32_WINNT_WINTHRESHOLD), LOBYTE(WIN32_WINNT_WINTHRESHOLD), 0))
+	{
+		if(find_running_service(L"cbdhsvc"))
+		{
+			DEBUG("windows clipboard history service is running!");
+			MESSAGE_BOX_ASYNC(L"A problem has been detected:\n\nThe \"Clipboard History\" service of Windows 10 is currently running on your machine. As long as that service is running, Windows 10 will silently keep a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nPlease refer to the documentation (README) for details!", MB_ICONWARNING);
+			return FALSE;
+		}
+	}
+
+	if(hwnd = FindWindow(NULL, L"Ditto Clipboard Viewer"))
+	{
+		WCHAR class_name[5];
+		if(GetClassNameW(hwnd, class_name, 5) && (!lstrcmpiW(class_name, L"Afx:")))
+		{
+			DEBUG("ditto clipboard manager process is running!");
+			MESSAGE_BOX_ASYNC(L"A problem has been detected:\n\nThe \"Ditto\" clipboard manager is currently running on your machine. That program keeps a history (copy) of *all* data that has been copied to the clipboard at some time.\n\nPlease terminate \"Ditto\" while ClearClipboard is running!", MB_ICONWARNING);
+			return FALSE;
+		}
 	}
 
 	return TRUE;
@@ -1451,6 +1506,73 @@ static BOOL find_running_service(const WCHAR *const name_prefix)
 
 	CloseServiceHandle(scm);
 	return result;
+}
+
+// ==========================================================================
+// Message box routines
+// ==========================================================================
+
+typedef struct
+{
+	MSGBOXPARAMSW param;
+	WCHAR data[];
+}
+_msgbox_t;
+
+static DWORD __stdcall _msgbox_thread(LPVOID lpParameter)
+{
+	if(lpParameter)
+	{
+		MessageBoxIndirectW(&(((_msgbox_t*)lpParameter)->param));
+		LocalFree((HLOCAL)lpParameter);
+	}
+	return 1U;
+}
+
+static BOOL messagebox_async(const WCHAR *const text, const WCHAR *const caption, const DWORD style)
+{
+	int len_text;
+	_msgbox_t *buffer;
+
+	if(!(text && (len_text = lstrlenW(text)) > 0))
+	{
+		return FALSE;
+	}
+
+	if(g_msgbox_thread)
+	{
+		const DWORD status = WaitForSingleObject(g_msgbox_thread, 1U);
+		if((status != WAIT_OBJECT_0) && (status != WAIT_FAILED))
+		{
+			return FALSE;
+		}
+		CloseHandle(g_msgbox_thread);
+		g_msgbox_thread = NULL;
+	}
+
+	if(!(buffer = (_msgbox_t*) LocalAlloc(LPTR, sizeof(_msgbox_t) + ((len_text + (caption ? (lstrlenW(caption) + 1U) : 0U) + 1U) * sizeof(WCHAR)))))
+	{
+		return FALSE;
+	}
+
+	buffer->param.cbSize = sizeof(MSGBOXPARAMSW);
+	buffer->param.dwStyle = (style & (~MB_USERICON));
+	buffer->param.lpszText = buffer->data;
+	lstrcpyW((WCHAR*)buffer->param.lpszText, text);
+
+	if(caption)
+	{
+		buffer->param.lpszCaption = buffer->data + len_text + 1U;
+		lstrcpyW((WCHAR*)buffer->param.lpszCaption, caption);
+	}
+	
+	if(!(g_msgbox_thread = CreateThread(NULL, 0U, _msgbox_thread, buffer, 0U, NULL)))
+	{
+		LocalFree((HLOCAL)buffer);
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 // ==========================================================================
