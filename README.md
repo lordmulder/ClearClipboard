@@ -133,7 +133,7 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 # Version History
 
-## Version 1.07 [2019-06-15]
+## Version 1.07 [2019-06-15] {-}
 
 * Slightly improved detection of "textual" data on the clipboard.
 
@@ -141,7 +141,7 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 * Some fixes and improvements.
 
-## Version 1.06 [2019-06-05]
+## Version 1.06 [2019-06-05] {-}
 
 * Optional system-wide *hotkey* to immediately clear the clipboard. Use parameter `Hotkey` to configure.
 
@@ -149,19 +149,19 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 * Some fixes and improvements.
 
-## Version 1.05 [2019-06-02]
+## Version 1.05 [2019-06-02] {-}
 
 * Detect whether the Windows 10 "Clipboard History" service is running, and, if so, suggest to disable.
 
 * Some fixes and improvements.
 
-## Version 1.04 [2019-06-01]
+## Version 1.04 [2019-06-01] {-}
 
 * Optionally restrict the automatic clearing to *textual* data. Use parameter `TextOnly` to configure.
 
 * Some fixes and improvements.
 
-## Version 1.03 [2019-05-31]
+## Version 1.03 [2019-05-31] {-}
 
 * Clipboard can be cleared *manually* by double-click on the shell notification icon or from the context menu.
 
@@ -179,13 +179,13 @@ The source code of ClearClipboard is available from our public Git repository, m
 
 * Some fixes and improvements.
 
-## Version 1.02 [2019-05-26]
+## Version 1.02 [2019-05-26] {-}
 
 * Added shell notification icon that can be used to control the ClearClipboard program.
 
 * Some fixes and improvements.
 
-## Version 1.01 [2019-05-25]
+## Version 1.01 [2019-05-25] {-}
 
 * First public release.
 
