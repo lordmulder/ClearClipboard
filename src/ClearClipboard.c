@@ -110,6 +110,7 @@ static BOOL reg_write_string(const HKEY root, const WCHAR *const path, const WCH
 static BOOL reg_delete_value(const HKEY root, const WCHAR *const path, const WCHAR *const name);
 static BOOL find_running_service(const WCHAR *const name_prefix);
 static BOOL messagebox_async(const WCHAR *const text, const WCHAR *const caption, const DWORD style);
+static BOOL stop_thread(const HANDLE thread);
 static WCHAR *quote_string(const WCHAR *const text);
 static WCHAR *concat_strings(const WCHAR *const text_1, const WCHAR *const text_2);
 static void output_formatted_string(const char *const format, ...);
@@ -484,11 +485,7 @@ clean_up:
 	// Stop messaging thread
 	if(g_msgbox_thread)
 	{
-		const DWORD status = WaitForSingleObject(g_msgbox_thread, 1U);
-		if((status != WAIT_OBJECT_0) && (status != WAIT_FAILED))
-		{
-			TerminateThread(g_msgbox_thread, 1U);
-		}
+		stop_thread(g_msgbox_thread);
 		CloseHandle(g_msgbox_thread);
 	}
 
@@ -1541,10 +1538,10 @@ static BOOL messagebox_async(const WCHAR *const text, const WCHAR *const caption
 
 	if(g_msgbox_thread)
 	{
-		const DWORD status = WaitForSingleObject(g_msgbox_thread, 1U);
+		const DWORD status = WaitForSingleObject(g_msgbox_thread, 125U);
 		if((status != WAIT_OBJECT_0) && (status != WAIT_FAILED))
 		{
-			return FALSE;
+			return FALSE; /*message still showing*/
 		}
 		CloseHandle(g_msgbox_thread);
 		g_msgbox_thread = NULL;
@@ -1569,6 +1566,30 @@ static BOOL messagebox_async(const WCHAR *const text, const WCHAR *const caption
 	if(!(g_msgbox_thread = CreateThread(NULL, 0U, _msgbox_thread, buffer, 0U, NULL)))
 	{
 		LocalFree((HLOCAL)buffer);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static BOOL stop_thread(const HANDLE thread)
+{
+	DWORD thread_id;
+
+	if(WaitForSingleObject(thread, 125U) != WAIT_TIMEOUT)
+	{
+		return TRUE; /*already terminated*/
+	}
+
+	if(thread_id = GetThreadId(thread))
+	{
+		PostThreadMessageW(thread_id, WM_QUIT, 0U, 0U);
+	}
+
+	if(WaitForSingleObject(thread, 5000U) == WAIT_TIMEOUT)
+	{
+		DEBUG("message thread failed to stop, terminating!");
+		TerminateThread(thread, 1U);
 		return FALSE;
 	}
 
