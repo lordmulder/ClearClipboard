@@ -110,7 +110,7 @@ The following configuration parameters are supported:
   If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows features or other programs that may expose your data to a risk. It is *not* recommended to do this, except for debugging purposes! Default: `0`.
 
 * **`HideNotificationIcon=<0|1>`**  
-  If this parameter is set to `1`, ClearClipboard will *not* create an icon in the notification area. Default: `0`.
+  If this parameter is set to `1`, ClearClipboard will *not* create an icon in the notification area. The periodic clearing of the clipboard will work as usual, but the only way to exit ClearClipboard will be via the Task Manager. Default: `0`.
 
 ## Example Configuration
 
