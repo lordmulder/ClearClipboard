@@ -176,7 +176,9 @@
     <ClInclude Include="src\Version.h" />
   </ItemGroup>
   <ItemGroup>
-    <Manifest Include="res\compatibility.manifest" />
+    <Manifest Include="res\compatibility.manifest">
+      <SubType>Designer</SubType>
+    </Manifest>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

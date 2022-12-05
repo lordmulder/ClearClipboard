@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------------------------- */
-/* ClearClipboard                                                                                */
+/* ClearClipboard                                                                                 */
 /* Copyright(c) 2019 LoRd_MuldeR <mulder2@gmx.de>                                                 */
 /*                                                                                                */
 /* Permission is hereby granted, free of charge, to any person obtaining a copy of this software  */
@@ -68,6 +68,7 @@ static BOOL cfg_halted = FALSE;
 static WORD cfg_hotkey = 0U;
 static BOOL cfg_ignore_warning = FALSE;
 static BOOL cfg_silent = FALSE;
+static BOOL cfg_hidden = FALSE;
 #ifndef _DEBUG
 static UINT cfg_debug = 0U;
 #else
@@ -299,6 +300,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 			cfg_halted = !!get_config_value(g_config_path, L"Halted", FALSE, FALSE, TRUE);
 			cfg_hotkey = (WORD) get_config_value(g_config_path, L"Hotkey", 0U, 0U, 0x8FF);
 			cfg_ignore_warning = !!get_config_value(g_config_path, L"DisableWarningMessages", FALSE, FALSE, TRUE);
+			cfg_hidden = !!get_config_value(g_config_path, L"HideNotificationIcon", FALSE, FALSE, TRUE);
 		}
 		else
 		{
@@ -313,6 +315,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	DEBUG2("config: sound_enabled=%u", cfg_sound_enabled);
 	DEBUG2("config: hotkey=0x%03X", (UINT)cfg_hotkey);
 	DEBUG2("config: ignore_warning=%s", BOOLIFY(cfg_ignore_warning));
+	DEBUG2("config: cfg_hidden=%s", BOOLIFY(cfg_hidden));
 
 	// Show the disclaimer message
 	if(!show_disclaimer())
@@ -411,9 +414,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	}
 
 	// Create notification icon
-	if(!create_shell_notify_icon(hwnd, cfg_halted))
+	if(!cfg_hidden)
 	{
-		DEBUG("failed to create the shell notification icon!");
+		if(!create_shell_notify_icon(hwnd, cfg_halted))
+		{
+			DEBUG("failed to create the shell notification icon!");
+		}
 	}
 
 	// Add clipboard listener
@@ -657,9 +663,12 @@ static LRESULT CALLBACK my_wnd_proc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 		if(message == g_taskbar_created)
 		{
 			DEBUG("taskbar has been (re)created.");
-			if(!create_shell_notify_icon(hWnd, cfg_halted))
+			if(!cfg_hidden)
 			{
-				DEBUG("failed to create the shell notification icon!");
+				if(!create_shell_notify_icon(hWnd, cfg_halted))
+				{
+					DEBUG("failed to create the shell notification icon!");
+				}
 			}
 		}
 		else

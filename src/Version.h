@@ -22,7 +22,7 @@
 #define VERSION_MAJOR		1
 #define VERSION_MINOR_HI	0
 #define VERSION_MINOR_LO	7
-#define VERSION_PATCH		1
+#define VERSION_PATCH		2
 
 // Version string helper
 #if VERSION_PATCH > 0

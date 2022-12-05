@@ -109,6 +109,9 @@ The following configuration parameters are supported:
 * **`DisableWarningMessages=<0|1>`**  
   If this parameter is set to `1`, ClearClipboard will *not* warn about "problematic" Windows features or other programs that may expose your data to a risk. It is *not* recommended to do this, except for debugging purposes! Default: `0`.
 
+* **`HideNotificationIcon=<0|1>`**  
+  If this parameter is set to `1`, ClearClipboard will *not* create an icon in the notification area. Default: `0`.
+
 ## Example Configuration
 
 An example configuration file:

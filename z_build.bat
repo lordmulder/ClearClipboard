@@ -38,9 +38,9 @@ REM // Get current date and time (in ISO format)
 REM ///////////////////////////////////////////////////////////////////////////
 
 set "ISO_DATE="
-if not exist "%~dp0\..\Prerequisites\GnuWin32\date.exe" goto BuildError
+if not exist "%~dp0\..\Prerequisites\MSYS\1.0\bin\date.exe" goto BuildError
 
-for /F "tokens=1,2 delims=:" %%a in ('"%~dp0\..\Prerequisites\GnuWin32\date.exe" +ISODATE:%%Y-%%m-%%d') do (
+for /F "tokens=1,2 delims=:" %%a in ('"%~dp0\..\Prerequisites\MSYS\1.0\bin\date.exe" +ISODATE:%%Y-%%m-%%d') do (
 	if "%%a"=="ISODATE" set "ISO_DATE=%%b"
 )
 
@@ -119,7 +119,7 @@ REM // Build the package
 REM ///////////////////////////////////////////////////////////////////////////
 
 pushd "%PACK_PATH%
-"%~dp0\..\Prerequisites\GnuWin32\zip.exe" -9 -r -z "%~dp0\out\%OUT_NAME%.zip" "*.*" < "%~dp0\Copying.txt"
+"%~dp0\..\Prerequisites\InfoZip\zip.exe" -9 -r -z "%~dp0\out\%OUT_NAME%.zip" "*.*" < "%~dp0\Copying.txt"
 popd
 
 attrib +R "%~dp0\out\%OUT_NAME%.zip"
